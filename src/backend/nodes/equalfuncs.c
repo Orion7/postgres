@@ -1210,6 +1210,7 @@ _equalIndexStmt(const IndexStmt *a, const IndexStmt *b)
 	COMPARE_SCALAR_FIELD(deferrable);
 	COMPARE_SCALAR_FIELD(initdeferred);
 	COMPARE_SCALAR_FIELD(concurrent);
+	COMPARE_SCALAR_FIELD(if_not_exists);
 
 	return true;
 }
@@ -2312,7 +2313,7 @@ _equalLockingClause(const LockingClause *a, const LockingClause *b)
 {
 	COMPARE_NODE_FIELD(lockedRels);
 	COMPARE_SCALAR_FIELD(strength);
-	COMPARE_SCALAR_FIELD(noWait);
+	COMPARE_SCALAR_FIELD(waitPolicy);
 
 	return true;
 }
@@ -2408,7 +2409,7 @@ _equalRowMarkClause(const RowMarkClause *a, const RowMarkClause *b)
 {
 	COMPARE_SCALAR_FIELD(rti);
 	COMPARE_SCALAR_FIELD(strength);
-	COMPARE_SCALAR_FIELD(noWait);
+	COMPARE_SCALAR_FIELD(waitPolicy);
 	COMPARE_SCALAR_FIELD(pushedDown);
 
 	return true;

@@ -76,6 +76,7 @@ extern char *output_files[];
 #define PATH_SEPARATOR		'/'
 #define RM_CMD				"rm -f"
 #define RMDIR_CMD			"rm -rf"
+#define SCRIPT_PREFIX		"./"
 #define SCRIPT_EXT			"sh"
 #define ECHO_QUOTE	"'"
 #define ECHO_BLANK	""
@@ -86,6 +87,7 @@ extern char *output_files[];
 #define PATH_SEPARATOR		'\\'
 #define RM_CMD				"DEL /q"
 #define RMDIR_CMD			"RMDIR /s/q"
+#define SCRIPT_PREFIX		""
 #define SCRIPT_EXT			"bat"
 #define EXE_EXT				".exe"
 #define ECHO_QUOTE	""
@@ -180,6 +182,9 @@ typedef struct
 	char	   *db_name;		/* database name */
 	char		db_tablespace[MAXPGPATH];		/* database default tablespace
 												 * path */
+	char	   *db_collate;
+	char	   *db_ctype;
+	int			db_encoding;
 	RelInfoArr	rel_arr;		/* array of all user relinfos */
 } DbInfo;
 
@@ -218,9 +223,6 @@ typedef struct
 	bool		date_is_int;
 	bool		float8_pass_by_value;
 	bool		data_checksum_version;
-	char	   *lc_collate;
-	char	   *lc_ctype;
-	char	   *encoding;
 } ControlData;
 
 /*

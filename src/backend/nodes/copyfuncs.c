@@ -598,6 +598,29 @@ _copyForeignScan(const ForeignScan *from)
 }
 
 /*
+ * _copyCustomScan
+ */
+static CustomScan *
+_copyCustomScan(const CustomScan *from)
+{
+	CustomScan		   *newnode;
+
+	newnode = from->methods->CopyCustomScan(from);
+	Assert(nodeTag(newnode) == nodeTag(from));
+
+	CopyScanFields((const Scan *) from, (Scan *) newnode);
+	COPY_SCALAR_FIELD(flags);
+	/*
+	 * NOTE: The method field of CustomScan is required to be a pointer
+	 * to a static table of callback functions. So, we don't copy the
+	 * table itself, just reference the original one.
+	 */
+	COPY_SCALAR_FIELD(methods);
+
+	return newnode;
+}
+
+/*
  * CopyJoinFields
  *
  *		This function copies the fields of the Join node.  It is used by
@@ -959,7 +982,7 @@ _copyPlanRowMark(const PlanRowMark *from)
 	COPY_SCALAR_FIELD(prti);
 	COPY_SCALAR_FIELD(rowmarkId);
 	COPY_SCALAR_FIELD(markType);
-	COPY_SCALAR_FIELD(noWait);
+	COPY_SCALAR_FIELD(waitPolicy);
 	COPY_SCALAR_FIELD(isParent);
 
 	return newnode;
@@ -2071,7 +2094,7 @@ _copyRowMarkClause(const RowMarkClause *from)
 
 	COPY_SCALAR_FIELD(rti);
 	COPY_SCALAR_FIELD(strength);
-	COPY_SCALAR_FIELD(noWait);
+	COPY_SCALAR_FIELD(waitPolicy);
 	COPY_SCALAR_FIELD(pushedDown);
 
 	return newnode;
@@ -2452,7 +2475,7 @@ _copyLockingClause(const LockingClause *from)
 
 	COPY_NODE_FIELD(lockedRels);
 	COPY_SCALAR_FIELD(strength);
-	COPY_SCALAR_FIELD(noWait);
+	COPY_SCALAR_FIELD(waitPolicy);
 
 	return newnode;
 }
@@ -2907,6 +2930,7 @@ _copyIndexStmt(const IndexStmt *from)
 	COPY_SCALAR_FIELD(deferrable);
 	COPY_SCALAR_FIELD(initdeferred);
 	COPY_SCALAR_FIELD(concurrent);
+	COPY_SCALAR_FIELD(if_not_exists);
 
 	return newnode;
 }
@@ -4041,6 +4065,9 @@ copyObject(const void *from)
 			break;
 		case T_ForeignScan:
 			retval = _copyForeignScan(from);
+			break;
+		case T_CustomScan:
+			retval = _copyCustomScan(from);
 			break;
 		case T_Join:
 			retval = _copyJoin(from);

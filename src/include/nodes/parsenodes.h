@@ -23,6 +23,7 @@
 #include "nodes/bitmapset.h"
 #include "nodes/primnodes.h"
 #include "nodes/value.h"
+#include "utils/lockwaitpolicy.h"
 
 /* Possible sources of a Query */
 typedef enum QuerySource
@@ -631,7 +632,7 @@ typedef struct LockingClause
 	NodeTag		type;
 	List	   *lockedRels;		/* FOR [KEY] UPDATE/SHARE relations */
 	LockClauseStrength strength;
-	bool		noWait;			/* NOWAIT option */
+	LockWaitPolicy	waitPolicy;	/* NOWAIT and SKIP LOCKED */
 } LockingClause;
 
 /*
@@ -976,7 +977,7 @@ typedef struct RowMarkClause
 	NodeTag		type;
 	Index		rti;			/* range table index of target relation */
 	LockClauseStrength strength;
-	bool		noWait;			/* NOWAIT option */
+	LockWaitPolicy waitPolicy;	/* NOWAIT and SKIP LOCKED */
 	bool		pushedDown;		/* pushed down from higher query level? */
 } RowMarkClause;
 
@@ -2255,6 +2256,7 @@ typedef struct IndexStmt
 	bool		deferrable;		/* is the constraint DEFERRABLE? */
 	bool		initdeferred;	/* is the constraint INITIALLY DEFERRED? */
 	bool		concurrent;		/* should this be a concurrent index build? */
+	bool		if_not_exists;	/* just do nothing if index already exists? */
 } IndexStmt;
 
 /* ----------------------

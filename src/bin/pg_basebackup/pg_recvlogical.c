@@ -62,15 +62,27 @@ static void disconnect_and_exit(int code);
 static void
 usage(void)
 {
-	printf(_("%s receives PostgreSQL logical change stream.\n\n"),
+	printf(_("%s receives PostgreSQL logical change streams.\n\n"),
 		   progname);
 	printf(_("Usage:\n"));
 	printf(_("  %s [OPTION]...\n"), progname);
+	printf(_("\nAction to be performed:\n"));
+	printf(_("      --create-slot      create a new replication slot (for the slot's name see --slot)\n"));
+	printf(_("      --drop-slot        drop the replication slot (for the slot's name see --slot)\n"));
+	printf(_("      --start            start streaming in a replication slot (for the slot's name see --slot)\n"));
 	printf(_("\nOptions:\n"));
-	printf(_("  -f, --file=FILE        receive log into this file. - for stdout\n"));
+	printf(_("  -f, --file=FILE        receive log into this file, - for stdout\n"));
 	printf(_("  -F  --fsync-interval=SECS\n"
-			 "                         frequency of syncs to the output file (default: %d)\n"), (fsync_interval / 1000));
+			 "                         time between fsyncs to the output file (default: %d)\n"), (fsync_interval / 1000));
+	printf(_("  -I, --startpos=LSN     where in an existing slot should the streaming start\n"));
 	printf(_("  -n, --no-loop          do not loop on connection lost\n"));
+	printf(_("  -o, --option=NAME[=VALUE]\n"
+			 "                         pass option NAME with optional value VALUE to the\n"
+			 "                         output plugin\n"));
+	printf(_("  -P, --plugin=PLUGIN    use output plugin PLUGIN (default: %s)\n"), plugin);
+	printf(_("  -s, --status-interval=SECS\n"
+			 "                         time between status packets sent to server (default: %d)\n"), (standby_message_timeout / 1000));
+	printf(_("  -S, --slot=SLOTNAME    name of the logical replication slot\n"));
 	printf(_("  -v, --verbose          output verbose messages\n"));
 	printf(_("  -V, --version          output version information, then exit\n"));
 	printf(_("  -?, --help             show this help, then exit\n"));
@@ -81,19 +93,6 @@ usage(void)
 	printf(_("  -U, --username=NAME    connect as specified database user\n"));
 	printf(_("  -w, --no-password      never prompt for password\n"));
 	printf(_("  -W, --password         force password prompt (should happen automatically)\n"));
-	printf(_("\nReplication options:\n"));
-	printf(_("  -I, --startpos=PTR     where in an existing slot should the streaming start\n"));
-	printf(_("  -o, --option=NAME[=VALUE]\n"
-			 "                         specify option NAME with optional value VALUE, to be passed\n"
-			 "                         to the output plugin\n"));
-	printf(_("  -P, --plugin=PLUGIN    use output plugin PLUGIN (default: %s)\n"), plugin);
-	printf(_("  -s, --status-interval=SECS\n"
-			 "                         time between status packets sent to server (default: %d)\n"), (standby_message_timeout / 1000));
-	printf(_("  -S, --slot=SLOT        name of the logical replication slot\n"));
-	printf(_("\nAction to be performed:\n"));
-	printf(_("      --create           create a new replication slot (for the slot's name see --slot)\n"));
-	printf(_("      --start            start streaming in a replication slot (for the slot's name see --slot)\n"));
-	printf(_("      --drop             drop the replication slot (for the slot's name see --slot)\n"));
 	printf(_("\nReport bugs to <pgsql-bugs@postgresql.org>.\n"));
 }
 
@@ -618,9 +617,9 @@ main(int argc, char **argv)
 		{"status-interval", required_argument, NULL, 's'},
 		{"slot", required_argument, NULL, 'S'},
 /* action */
-		{"create", no_argument, NULL, 1},
+		{"create-slot", no_argument, NULL, 1},
 		{"start", no_argument, NULL, 2},
-		{"drop", no_argument, NULL, 3},
+		{"drop-slot", no_argument, NULL, 3},
 		{NULL, 0, NULL, 0}
 	};
 	int			c;
@@ -814,7 +813,7 @@ main(int argc, char **argv)
 
 	if (do_drop_slot && (do_create_slot || do_start_slot))
 	{
-		fprintf(stderr, _("%s: cannot use --create or --start together with --drop\n"), progname);
+		fprintf(stderr, _("%s: cannot use --create-slot or --start together with --drop-slot\n"), progname);
 		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
 				progname);
 		exit(1);
@@ -822,7 +821,7 @@ main(int argc, char **argv)
 
 	if (startpos != InvalidXLogRecPtr && (do_create_slot || do_drop_slot))
 	{
-		fprintf(stderr, _("%s: cannot use --create or --drop together with --startpos\n"), progname);
+		fprintf(stderr, _("%s: cannot use --create-slot or --drop-slot together with --startpos\n"), progname);
 		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
 				progname);
 		exit(1);

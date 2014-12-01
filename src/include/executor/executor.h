@@ -16,6 +16,8 @@
 
 #include "executor/execdesc.h"
 #include "nodes/parsenodes.h"
+#include "nodes/relation.h"
+#include "utils/lockwaitpolicy.h"
 
 
 /*
@@ -102,7 +104,7 @@ extern PGDLLIMPORT ExecutorCheckPerms_hook_type ExecutorCheckPerms_hook;
 extern void ExecReScan(PlanState *node);
 extern void ExecMarkPos(PlanState *node);
 extern void ExecRestrPos(PlanState *node);
-extern bool ExecSupportsMarkRestore(NodeTag plantype);
+extern bool ExecSupportsMarkRestore(Path *pathnode);
 extern bool ExecSupportsBackwardScan(Plan *node);
 extern bool ExecMaterializesOutput(NodeTag plantype);
 
@@ -199,7 +201,8 @@ extern TupleTableSlot *EvalPlanQual(EState *estate, EPQState *epqstate,
 			 Relation relation, Index rti, int lockmode,
 			 ItemPointer tid, TransactionId priorXmax);
 extern HeapTuple EvalPlanQualFetch(EState *estate, Relation relation,
-				  int lockmode, bool noWait, ItemPointer tid, TransactionId priorXmax);
+				  int lockmode, LockWaitPolicy wait_policy, ItemPointer tid,
+				  TransactionId priorXmax);
 extern void EvalPlanQualInit(EPQState *epqstate, EState *estate,
 				 Plan *subplan, List *auxrowmarks, int epqParam);
 extern void EvalPlanQualSetPlan(EPQState *epqstate,
@@ -265,7 +268,8 @@ extern TupleTableSlot *ExecInitNullTupleSlot(EState *estate,
 					  TupleDesc tupType);
 extern TupleDesc ExecTypeFromTL(List *targetList, bool hasoid);
 extern TupleDesc ExecCleanTypeFromTL(List *targetList, bool hasoid);
-extern TupleDesc ExecTypeFromExprList(List *exprList, List *namesList);
+extern TupleDesc ExecTypeFromExprList(List *exprList);
+extern void ExecTypeSetColNames(TupleDesc typeInfo, List *namesList);
 extern void UpdateChangedParamSet(PlanState *node, Bitmapset *newchg);
 
 typedef struct TupOutputState

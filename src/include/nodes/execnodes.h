@@ -19,6 +19,7 @@
 #include "executor/instrument.h"
 #include "nodes/params.h"
 #include "nodes/plannodes.h"
+#include "nodes/relation.h"
 #include "utils/reltrigger.h"
 #include "utils/sortsupport.h"
 #include "utils/tuplestore.h"
@@ -429,7 +430,7 @@ typedef struct ExecRowMark
 	Index		prti;			/* parent range table index, if child */
 	Index		rowmarkId;		/* unique identifier for resjunk columns */
 	RowMarkType markType;		/* see enum in nodes/plannodes.h */
-	bool		noWait;			/* NOWAIT option */
+	LockWaitPolicy waitPolicy;	/* NOWAIT and SKIP LOCKED */
 	ItemPointerData curCtid;	/* ctid of currently locked tuple, if any */
 } ExecRowMark;
 
@@ -577,6 +578,7 @@ typedef struct WholeRowVarExprState
 {
 	ExprState	xprstate;
 	struct PlanState *parent;	/* parent PlanState, or NULL if none */
+	TupleDesc	wrv_tupdesc;	/* descriptor for resulting tuples */
 	JunkFilter *wrv_junkFilter; /* JunkFilter to remove resjunk cols */
 } WholeRowVarExprState;
 
@@ -1503,6 +1505,45 @@ typedef struct ForeignScanState
 	struct FdwRoutine *fdwroutine;
 	void	   *fdw_state;		/* foreign-data wrapper can keep state here */
 } ForeignScanState;
+
+/* ----------------
+ * CustomScanState information
+ *
+ *		CustomScan nodes are used to execute custom code within executor.
+ * ----------------
+ */
+struct CustomExecMethods;
+struct ExplainState;	/* to avoid to include explain.h here */
+
+typedef struct CustomScanState
+{
+	ScanState	ss;
+	uint32		flags;	/* mask of CUSTOMPATH_* flags defined in relation.h*/
+	const struct CustomExecMethods *methods;
+} CustomScanState;
+
+typedef struct CustomExecMethods
+{
+	const char     *CustomName;
+
+	/* EXECUTOR methods */
+	void    (*BeginCustomScan)(CustomScanState *node,
+							   EState *estate,
+							   int eflags);
+	TupleTableSlot *(*ExecCustomScan)(CustomScanState *node);
+	void	(*EndCustomScan)(CustomScanState *node);
+	void	(*ReScanCustomScan)(CustomScanState *node);
+	void	(*MarkPosCustomScan)(CustomScanState *node);
+	void	(*RestrPosCustomScan)(CustomScanState *node);
+
+	/* EXPLAIN support */
+	void    (*ExplainCustomScan)(CustomScanState *node,
+								 List *ancestors,
+								 struct ExplainState *es);
+	Node   *(*GetSpecialCustomVar)(CustomScanState *node,
+								   Var *varnode,
+								   PlanState **child_ps);
+} CustomExecMethods;
 
 /* ----------------------------------------------------------------
  *				 Join State Information
