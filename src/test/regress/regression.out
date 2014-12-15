@@ -1,5 +1,5 @@
 test tablespace               ... ok
-parallel group (20 tests):  oid boolean pg_lsn name uuid char varchar float4 money txid regproc int2 bit int8 float8 text int4 enum rangetypes numeric
+parallel group (20 tests):  boolean pg_lsn oid varchar txid char regproc name int4 int2 uuid float4 text money float8 bit int8 enum rangetypes numeric
      boolean                  ... ok
      char                     ... ok
      name                     ... ok
@@ -22,7 +22,7 @@ parallel group (20 tests):  oid boolean pg_lsn name uuid char varchar float4 mon
      regproc                  ... ok
 test strings                  ... ok
 test numerology               ... ok
-parallel group (20 tests):  polygon path circle lseg reltime time box timetz inet abstime comments tinterval macaddr interval point tstypes line date timestamp timestamptz
+parallel group (20 tests):  timetz macaddr abstime comments lseg date box path time polygon tinterval line reltime inet circle tstypes interval point timestamptz timestamp
      point                    ... ok
      lseg                     ... ok
      line                     ... ok
@@ -43,7 +43,7 @@ parallel group (20 tests):  polygon path circle lseg reltime time box timetz ine
      macaddr                  ... ok
      tstypes                  ... ok
      comments                 ... ok
-parallel group (6 tests):  regex geometry oidjoins horology type_sanity opr_sanity
+parallel group (6 tests):  geometry regex horology type_sanity oidjoins opr_sanity
      geometry                 ... ok
      horology                 ... ok
      regex                    ... ok
@@ -64,7 +64,7 @@ parallel group (2 tests):  create_operator create_misc
 parallel group (2 tests):  create_view create_index
      create_index             ... FAILED
      create_view              ... ok
-parallel group (11 tests):  create_cast typed_table create_aggregate drop_if_exists vacuum constraints create_function_3 create_table_like triggers updatable_views inherit
+parallel group (11 tests):  create_cast create_aggregate typed_table create_function_3 constraints drop_if_exists vacuum create_table_like triggers inherit updatable_views
      create_aggregate         ... ok
      create_function_3        ... ok
      create_cast              ... ok
@@ -76,10 +76,10 @@ parallel group (11 tests):  create_cast typed_table create_aggregate drop_if_exi
      vacuum                   ... ok
      drop_if_exists           ... ok
      updatable_views          ... ok
-test sanity_check             ... ok
+test sanity_check             ... FAILED
 test errors                   ... ok
 test select                   ... ok
-parallel group (20 tests):  select_distinct select_distinct_on random namespace delete select_having select_into select_implicit update hash_index btree_index case union transactions subselect portals aggregates arrays join prepared_xacts
+parallel group (20 tests):  random delete select_into select_distinct select_having select_distinct_on namespace select_implicit btree_index union update hash_index subselect case transactions portals aggregates arrays join prepared_xacts
      select_into              ... ok
      select_distinct          ... ok
      select_distinct_on       ... ok
@@ -100,7 +100,7 @@ parallel group (20 tests):  select_distinct select_distinct_on random namespace 
      namespace                ... ok
      prepared_xacts           ... ok
      delete                   ... ok
-parallel group (11 tests):  replica_identity lock collate security_label privileges gist gin spgist rowsecurity brin matview
+parallel group (11 tests):  lock replica_identity security_label gin collate gist privileges spgist rowsecurity brin matview
      brin                     ... ok
      gin                      ... FAILED
      gist                     ... ok
@@ -112,14 +112,14 @@ parallel group (11 tests):  replica_identity lock collate security_label privile
      lock                     ... ok
      replica_identity         ... ok
      rowsecurity              ... ok
-parallel group (4 tests):  async psql misc alter_generic
+parallel group (4 tests):  async psql alter_generic misc
      alter_generic            ... ok
      misc                     ... ok
      psql                     ... ok
      async                    ... ok
 test rules                    ... ok
 test event_trigger            ... ok
-parallel group (19 tests):  portals_p2 advisory_lock xmlmap dependency equivclass tsdicts functional_deps cluster combocid tsearch window guc select_views json foreign_data jsonb indirect_toast foreign_key bitmapops
+parallel group (19 tests):  advisory_lock xmlmap combocid equivclass tsdicts portals_p2 functional_deps dependency guc window select_views tsearch json cluster jsonb foreign_data indirect_toast bitmapops foreign_key
      select_views             ... ok
      portals_p2               ... ok
      foreign_key              ... ok
@@ -139,7 +139,7 @@ parallel group (19 tests):  portals_p2 advisory_lock xmlmap dependency equivclas
      jsonb                    ... FAILED
      indirect_toast           ... ok
      equivclass               ... ok
-parallel group (19 tests):  limit plancache without_oid prepare truncate returning temp xml rowtypes conversion copy2 sequence domain with polymorphism rangefuncs largeobject alter_table plpgsql
+parallel group (19 tests):  limit prepare returning without_oid sequence rowtypes temp copy2 plancache xml conversion truncate domain largeobject with polymorphism rangefuncs alter_table plpgsql
      plancache                ... ok
      limit                    ... ok
      plpgsql                  ... ok

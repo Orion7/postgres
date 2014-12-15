@@ -28,6 +28,21 @@
 #include "storage/latch.h"
 #include "storage/proc.h"
 #include "fmgr.h"
+#include "storage/shm_mq.h"
+#include "storage/shm_toc.h"
+#include "storage/spin.h"
+#include "storage/dsm.h"
+
+/* Identifier for shared memory segments used by this extension. */
+#define		PG_TEST_SHM_MQ_MAGIC		0x79fb2447
+
+typedef struct
+{
+	slock_t     mutex;
+	int         workers_total;
+	int         workers_attached;
+	int         workers_ready;
+} test_shm_mq_header;
 
 typedef struct
 {
@@ -271,7 +286,7 @@ ginHeapTupleBulkInsert(GinBuildState *buildstate, OffsetNumber attnum,
 
 static void
 ginBuildCallback(Relation index, HeapTuple htup, Datum *values,
-				 bool *isnull, bool tupleIsAlive, void *state, BackgroundWorker * worker)
+				 bool *isnull, bool tupleIsAlive, void *state)
 {
 	GinBuildState *buildstate = (GinBuildState *) state;
 	MemoryContext oldCtx;
@@ -316,9 +331,85 @@ dowork(Datum main_arg)
 	elog(LOG, "DOWORK %d!", DatumGetInt32(main_arg));
 }
 
+static void
+setup_dynamic_shared_memory(int64 queue_size, int nworkers,
+							dsm_segment **segp, test_shm_mq_header **hdrp,
+							shm_mq **outp, shm_mq **inp)
+{
+	shm_toc_estimator e;
+	int			i;
+	Size		segsize;
+	dsm_segment *seg;
+	shm_toc    *toc;
+	test_shm_mq_header *hdr;
+
+	/* Ensure a valid queue size. */
+	if (queue_size < 0 || ((uint64) queue_size) < shm_mq_minimum_size)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("queue size must be at least %zu bytes",
+						shm_mq_minimum_size)));
+	if (queue_size != ((Size) queue_size))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("queue size overflows size_t")));
+
+	/*
+	 * Estimate how much shared memory we need.
+	 *
+	 * Because the TOC machinery may choose to insert padding of oddly-sized
+	 * requests, we must estimate each chunk separately.
+	 *
+	 * We need one key to register the location of the header, and we need
+	 * nworkers + 1 keys to track the locations of the message queues.
+	 */
+	shm_toc_initialize_estimator(&e);
+	for (i = 0; i <= nworkers; ++i)
+		shm_toc_estimate_chunk(&e, (Size) queue_size);
+	shm_toc_estimate_keys(&e, 2 + nworkers);
+	segsize = shm_toc_estimate(&e);
+
+	/* Create the shared memory segment and establish a table of contents. */
+	seg = dsm_create(shm_toc_estimate(&e));
+	//toc = shm_toc_create(PG_TEST_SHM_MQ_MAGIC, dsm_segment_address(seg),
+	//					 segsize);
+
+	/* Set up the header region. 
+	hdr = shm_toc_allocate(toc, sizeof(test_shm_mq_header));
+	SpinLockInit(&hdr->mutex);
+	hdr->workers_total = nworkers;
+	hdr->workers_attached = 0;
+	hdr->workers_ready = 0;
+	shm_toc_insert(toc, 0, hdr);*/
+
+	/* Return results to caller. */
+	*segp = seg;
+	*hdrp = hdr;
+}
+
 Datum
 ginbuild(PG_FUNCTION_ARGS)
-{
+{	
+	int64		queue_size = PG_GETARG_INT64(0);
+	text	   *message = PG_GETARG_TEXT_PP(1);
+	char	   *message_contents = VARDATA_ANY(message);
+	int			message_size = VARSIZE_ANY_EXHDR(message);
+	int32		loop_count = PG_GETARG_INT32(2);
+	int32		nworkers = PG_GETARG_INT32(3);
+	dsm_segment *seg;
+	shm_mq_handle *outqh;
+	shm_mq_handle *inqh;
+	shm_mq_result res;
+	Size		len;
+	void	   *data;
+
+	test_shm_mq_header *hdr;
+	shm_mq	   *outq = NULL;	/* placate compiler */
+	shm_mq	   *inq = NULL;		/* placate 
+
+	/* Set up a dynamic shared memory segment. */
+	setup_dynamic_shared_memory(queue_size, 4, &seg, &hdr, &outq, &inq);
+
 	BackgroundWorker worker[4];
 	BackgroundWorkerHandle * handle[4];
 	pid_t *pidp[4];
