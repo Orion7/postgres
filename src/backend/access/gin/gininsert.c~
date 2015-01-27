@@ -69,7 +69,6 @@ typedef struct
 	dsm_segment *seg;
 	shm_mq_handle *outqh;
 	shm_mq_handle *inqh;
-	shm_mq_result res;
 	Size		len;
 } GinBuildState;
 
@@ -633,7 +632,6 @@ ginbuild(PG_FUNCTION_ARGS)
 	dsm_segment *seg;
 	shm_mq_handle *outqh;
 	shm_mq_handle *inqh;
-	shm_mq_result res;
 	Size		len;
 	void	   *data;
 
@@ -726,7 +724,8 @@ ginbuild(PG_FUNCTION_ARGS)
 
 	buildstate.worker = worker;
 	buildstate.inqh = inqh;
-	buildstate.outqh = outqh;	
+	buildstate.outqh = outqh;
+	buildstate.seg = seg;	
 
 	if (RelationGetNumberOfBlocks(index) != 0)
 		elog(ERROR, "index \"%s\" already contains data",
