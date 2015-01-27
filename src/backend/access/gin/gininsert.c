@@ -34,7 +34,9 @@
 #include "storage/dsm.h"
 
 /* Identifier for shared memory segments used by this extension. */
-#define		PG_TEST_SHM_MQ_MAGIC		0x79fb2447
+#define PG_TEST_SHM_MQ_MAGIC 0x79fb2447
+#define QUEUE_SIZE 1000000
+#define NWORKERS 1
 
 typedef struct
 {
@@ -290,39 +292,28 @@ ginBuildCallback(Relation index, HeapTuple htup, Datum *values,
 {
 	GinBuildState *buildstate = (GinBuildState *) state;
 	MemoryContext oldCtx;
-	int			i;
-
+	int i;
+	int j;
+	Datum *entries;
+	GinNullCategory *categories;
+	int32 nentries;
 	oldCtx = MemoryContextSwitchTo(buildstate->tmpCtx);
 
-	for (i = 0; i < buildstate->ginstate.origTupdesc->natts; i++)
-		ginHeapTupleBulkInsert(buildstate, (OffsetNumber) (i + 1),
-							   values[i], isnull[i],
-							   &htup->t_self);
 
-	/* If we've maxed out our available memory, dump everything to the index */
-	if (buildstate->accum.allocatedMemory >= maintenance_work_mem * 1024L)
-	{
-		ItemPointerData *list;
-		Datum		key;
-		GinNullCategory category;
-		uint32		nlist;
-		OffsetNumber attnum;
+	for (i = 0; i < buildstate->ginstate.origTupdesc->natts; i++){
+		entries = ginExtractEntries(buildstate->accum.ginstate, (OffsetNumber) (i + 1),
+						values[i], isnull[i], &nentries, &categories);
 
-		ginBeginBAScan(&buildstate->accum);
-		while ((list = ginGetBAEntry(&buildstate->accum,
-								  &attnum, &key, &category, &nlist)) != NULL)
-		{
-			/* there could be many entries, so be willing to abort here */
-			CHECK_FOR_INTERRUPTS();
-			ginEntryInsert(&buildstate->ginstate, attnum, key, category,
-						   list, nlist, &buildstate->buildStats);
-		}
+		//DatumGetPointer VARSIZE_ANY hash_any
+		//ginstate tupdesc *attrs attbyval if(attbyval) hash(Datum)
+		//цикл получить Pointer, найти хэш от него
+		//+for
 
-		MemoryContextReset(buildstate->tmpCtx);
-		ginInitBA(&buildstate->accum);
+		elog(NOTICE, "nentries = %d", nentries);
 	}
 
 	MemoryContextSwitchTo(oldCtx);
+
 }
 
 static void
@@ -371,16 +362,16 @@ setup_dynamic_shared_memory(int64 queue_size, int nworkers,
 
 	/* Create the shared memory segment and establish a table of contents. */
 	seg = dsm_create(shm_toc_estimate(&e));
-	//toc = shm_toc_create(PG_TEST_SHM_MQ_MAGIC, dsm_segment_address(seg),
-	//					 segsize);
+	toc = shm_toc_create(PG_TEST_SHM_MQ_MAGIC, dsm_segment_address(seg),
+						 segsize);
 
-	/* Set up the header region. 
+	/* Set up the header region. */
 	hdr = shm_toc_allocate(toc, sizeof(test_shm_mq_header));
 	SpinLockInit(&hdr->mutex);
 	hdr->workers_total = nworkers;
 	hdr->workers_attached = 0;
 	hdr->workers_ready = 0;
-	shm_toc_insert(toc, 0, hdr);*/
+	shm_toc_insert(toc, 0, hdr);
 
 	/* Return results to caller. */
 	*segp = seg;
@@ -390,12 +381,12 @@ setup_dynamic_shared_memory(int64 queue_size, int nworkers,
 Datum
 ginbuild(PG_FUNCTION_ARGS)
 {	
-	int64		queue_size = PG_GETARG_INT64(0);
+	int64		queue_size = QUEUE_SIZE;
 	text	   *message = PG_GETARG_TEXT_PP(1);
 	char	   *message_contents = VARDATA_ANY(message);
 	int			message_size = VARSIZE_ANY_EXHDR(message);
 	int32		loop_count = PG_GETARG_INT32(2);
-	int32		nworkers = PG_GETARG_INT32(3);
+	int32		nworkers = NWORKERS;
 	dsm_segment *seg;
 	shm_mq_handle *outqh;
 	shm_mq_handle *inqh;
@@ -408,37 +399,37 @@ ginbuild(PG_FUNCTION_ARGS)
 	shm_mq	   *inq = NULL;		/* placate 
 
 	/* Set up a dynamic shared memory segment. */
-	setup_dynamic_shared_memory(queue_size, 4, &seg, &hdr, &outq, &inq);
+	setup_dynamic_shared_memory(queue_size, nworkers, &seg, &hdr, &outq, &inq);
 
-	BackgroundWorker worker[4];
-	BackgroundWorkerHandle * handle[4];
-	pid_t *pidp[4];
+	BackgroundWorker worker;
+	BackgroundWorkerHandle * handle;
+	pid_t *pidp;
 
 	int i =0;
 
-	for (i = 0; i < 4; i++)
-	{
-		/* Register the worker processes */
-		worker[i].bgw_flags = BGWORKER_SHMEM_ACCESS;
-		worker[i].bgw_start_time = BgWorkerStart_RecoveryFinished;
+	
+	/* Register the worker processes */
+	worker.bgw_flags = BGWORKER_SHMEM_ACCESS;
+	worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
 
-		/*
-		 * Function to call when starting bgworker, in this case library is
-		 * already loaded.
-		 */
-		worker[i].bgw_main = dowork;
-		snprintf(worker[i].bgw_name, BGW_MAXLEN, "GinWorker %d", i);
-		worker[i].bgw_restart_time = BGW_NEVER_RESTART;
-		worker[i].bgw_main_arg = (Datum) i;
+	/*
+	 * Function to call when starting bgworker, in this case library is
+	 * already loaded.
+	 */
+	worker.bgw_main = dowork;
+	snprintf(worker.bgw_name, BGW_MAXLEN, "GinWorker %d", i);
+	worker.bgw_restart_time = BGW_NEVER_RESTART;
+	worker.bgw_main_arg = (Datum) i;
 	#if PG_VERSION_NUM >= 90400
 		/*
 		 * Notify PID is present since 9.4. If this is not initialized
 		 * a static background worker cannot start properly.
 		 */
-		worker[i].bgw_notify_pid = 1;
+		worker.bgw_notify_pid = 1;
 	#endif
-		if(RegisterDynamicBackgroundWorker(&worker[i], &handle)) elog(NOTICE, "works %d", i);
-	}
+	
+	if(RegisterDynamicBackgroundWorker(&worker, &handle)) elog(NOTICE, "works %d", i);
+
 	Relation	heap = (Relation) PG_GETARG_POINTER(0);
 	Relation	index = (Relation) PG_GETARG_POINTER(1);
 	IndexInfo  *indexInfo = (IndexInfo *) PG_GETARG_POINTER(2);
