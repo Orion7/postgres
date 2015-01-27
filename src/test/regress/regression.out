@@ -1,5 +1,9 @@
 test tablespace               ... ok
+<<<<<<< HEAD
 parallel group (20 tests):  float4 name oid pg_lsn uuid txid money regproc int4 boolean varchar float8 char enum bit int2 text int8 rangetypes numeric
+=======
+parallel group (20 tests):  char pg_lsn txid oid uuid regproc name float4 int2 boolean varchar money text float8 int4 enum int8 bit rangetypes numeric
+>>>>>>> 03c5c6344d75e2e7a91b277d52346d0e94d3e3a1
      boolean                  ... ok
      char                     ... ok
      name                     ... ok
@@ -22,7 +26,11 @@ parallel group (20 tests):  float4 name oid pg_lsn uuid txid money regproc int4 
      regproc                  ... ok
 test strings                  ... ok
 test numerology               ... ok
+<<<<<<< HEAD
 parallel group (20 tests):  tinterval comments time timetz reltime macaddr circle abstime polygon path lseg tstypes inet line box date interval point timestamptz timestamp
+=======
+parallel group (20 tests):  time circle timetz comments reltime path polygon abstime macaddr line box lseg tinterval inet tstypes date interval point timestamp timestamptz
+>>>>>>> 03c5c6344d75e2e7a91b277d52346d0e94d3e3a1
      point                    ... ok
      lseg                     ... ok
      line                     ... ok
@@ -43,7 +51,7 @@ parallel group (20 tests):  tinterval comments time timetz reltime macaddr circl
      macaddr                  ... ok
      tstypes                  ... ok
      comments                 ... ok
-parallel group (6 tests):  geometry regex horology type_sanity oidjoins opr_sanity
+parallel group (6 tests):  geometry regex horology oidjoins type_sanity opr_sanity
      geometry                 ... ok
      horology                 ... ok
      regex                    ... ok
@@ -55,15 +63,16 @@ test create_function_1        ... ok
 test create_type              ... ok
 test create_table             ... ok
 test create_function_2        ... ok
-parallel group (2 tests):  copyselect copy
+parallel group (2 tests):  copy copyselect
      copy                     ... ok
      copyselect               ... ok
 parallel group (2 tests):  create_operator create_misc
      create_misc              ... ok
      create_operator          ... ok
 parallel group (2 tests):  create_view create_index
-     create_index             ... FAILED
+     create_index             ... FAILED (test process exited with exit code 2)
      create_view              ... ok
+<<<<<<< HEAD
 parallel group (11 tests):  create_aggregate typed_table create_cast drop_if_exists create_function_3 vacuum create_table_like constraints triggers updatable_views inherit
      create_aggregate         ... ok
      create_function_3        ... ok
@@ -159,4 +168,101 @@ parallel group (19 tests):  prepare temp returning limit without_oid truncate co
      largeobject              ... ok
      with                     ... ok
      xml                      ... ok
+=======
+parallel group (11 tests):  create_function_3 create_cast create_aggregate vacuum inherit create_table_like triggers constraints typed_table drop_if_exists updatable_views
+     create_aggregate         ... FAILED (test process exited with exit code 2)
+     create_function_3        ... FAILED (test process exited with exit code 2)
+     create_cast              ... FAILED (test process exited with exit code 2)
+     constraints              ... FAILED (test process exited with exit code 2)
+     triggers                 ... FAILED (test process exited with exit code 2)
+     inherit                  ... FAILED (test process exited with exit code 2)
+     create_table_like        ... FAILED (test process exited with exit code 2)
+     typed_table              ... FAILED (test process exited with exit code 2)
+     vacuum                   ... FAILED (test process exited with exit code 2)
+     drop_if_exists           ... FAILED (test process exited with exit code 2)
+     updatable_views          ... FAILED (test process exited with exit code 2)
+test sanity_check             ... FAILED (test process exited with exit code 2)
+test errors                   ... FAILED (test process exited with exit code 2)
+test select                   ... FAILED (test process exited with exit code 2)
+parallel group (20 tests):  random join select_having union prepared_xacts portals case btree_index arrays aggregates hash_index update delete subselect namespace transactions select_distinct select_implicit select_into select_distinct_on
+     select_into              ... FAILED (test process exited with exit code 2)
+     select_distinct          ... FAILED (test process exited with exit code 2)
+     select_distinct_on       ... FAILED (test process exited with exit code 2)
+     select_implicit          ... FAILED (test process exited with exit code 2)
+     select_having            ... FAILED (test process exited with exit code 2)
+     subselect                ... FAILED (test process exited with exit code 2)
+     union                    ... FAILED (test process exited with exit code 2)
+     case                     ... FAILED (test process exited with exit code 2)
+     join                     ... FAILED (test process exited with exit code 2)
+     aggregates               ... FAILED (test process exited with exit code 2)
+     transactions             ... FAILED (test process exited with exit code 2)
+     random                   ... failed (ignored) (test process exited with exit code 2)
+     portals                  ... FAILED (test process exited with exit code 2)
+     arrays                   ... FAILED (test process exited with exit code 2)
+     btree_index              ... FAILED (test process exited with exit code 2)
+     hash_index               ... FAILED (test process exited with exit code 2)
+     update                   ... FAILED (test process exited with exit code 2)
+     namespace                ... FAILED (test process exited with exit code 2)
+     prepared_xacts           ... FAILED (test process exited with exit code 2)
+     delete                   ... FAILED (test process exited with exit code 2)
+parallel group (11 tests):  matview lock gin rowsecurity privileges gist security_label brin spgist collate replica_identity
+     brin                     ... FAILED (test process exited with exit code 2)
+     gin                      ... FAILED (test process exited with exit code 2)
+     gist                     ... FAILED (test process exited with exit code 2)
+     spgist                   ... FAILED (test process exited with exit code 2)
+     privileges               ... FAILED (test process exited with exit code 2)
+     security_label           ... FAILED (test process exited with exit code 2)
+     collate                  ... FAILED (test process exited with exit code 2)
+     matview                  ... FAILED (test process exited with exit code 2)
+     lock                     ... FAILED (test process exited with exit code 2)
+     replica_identity         ... FAILED (test process exited with exit code 2)
+     rowsecurity              ... FAILED (test process exited with exit code 2)
+parallel group (4 tests):  async psql misc alter_generic
+     alter_generic            ... FAILED (test process exited with exit code 2)
+     misc                     ... FAILED (test process exited with exit code 2)
+     psql                     ... FAILED (test process exited with exit code 2)
+     async                    ... FAILED (test process exited with exit code 2)
+test rules                    ... FAILED (test process exited with exit code 2)
+test event_trigger            ... FAILED (test process exited with exit code 2)
+parallel group (19 tests):  foreign_data xmlmap select_views jsonb tsdicts advisory_lock portals_p2 guc combocid functional_deps tsearch foreign_key bitmapops window json indirect_toast equivclass cluster dependency
+     select_views             ... FAILED (test process exited with exit code 2)
+     portals_p2               ... FAILED (test process exited with exit code 2)
+     foreign_key              ... FAILED (test process exited with exit code 2)
+     cluster                  ... FAILED (test process exited with exit code 2)
+     dependency               ... FAILED (test process exited with exit code 2)
+     guc                      ... FAILED (test process exited with exit code 2)
+     bitmapops                ... FAILED (test process exited with exit code 2)
+     combocid                 ... FAILED (test process exited with exit code 2)
+     tsearch                  ... FAILED (test process exited with exit code 2)
+     tsdicts                  ... FAILED (test process exited with exit code 2)
+     foreign_data             ... FAILED (test process exited with exit code 2)
+     window                   ... FAILED (test process exited with exit code 2)
+     xmlmap                   ... FAILED (test process exited with exit code 2)
+     functional_deps          ... FAILED (test process exited with exit code 2)
+     advisory_lock            ... FAILED (test process exited with exit code 2)
+     json                     ... FAILED (test process exited with exit code 2)
+     jsonb                    ... FAILED (test process exited with exit code 2)
+     indirect_toast           ... FAILED (test process exited with exit code 2)
+     equivclass               ... FAILED (test process exited with exit code 2)
+parallel group (19 tests):  sequence conversion prepare plancache without_oid rangefuncs xml returning copy2 temp rowtypes domain truncate limit with largeobject plpgsql alter_table polymorphism
+     plancache                ... FAILED (test process exited with exit code 2)
+     limit                    ... FAILED (test process exited with exit code 2)
+     plpgsql                  ... FAILED (test process exited with exit code 2)
+     copy2                    ... FAILED (test process exited with exit code 2)
+     temp                     ... FAILED (test process exited with exit code 2)
+     domain                   ... FAILED (test process exited with exit code 2)
+     rangefuncs               ... FAILED (test process exited with exit code 2)
+     prepare                  ... FAILED (test process exited with exit code 2)
+     without_oid              ... FAILED (test process exited with exit code 2)
+     conversion               ... FAILED (test process exited with exit code 2)
+     truncate                 ... FAILED (test process exited with exit code 2)
+     alter_table              ... FAILED (test process exited with exit code 2)
+     sequence                 ... FAILED (test process exited with exit code 2)
+     polymorphism             ... FAILED (test process exited with exit code 2)
+     rowtypes                 ... FAILED (test process exited with exit code 2)
+     returning                ... FAILED (test process exited with exit code 2)
+     largeobject              ... FAILED (test process exited with exit code 2)
+     with                     ... FAILED (test process exited with exit code 2)
+     xml                      ... FAILED (test process exited with exit code 2)
+>>>>>>> 03c5c6344d75e2e7a91b277d52346d0e94d3e3a1
 test stats                    ... ok
