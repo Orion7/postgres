@@ -39,7 +39,7 @@
 /* Identifier for shared memory segments used by this extension. */
 #define PG_TEST_SHM_MQ_MAGIC 0x79fb2447
 #define QUEUE_SIZE 64
-#define NWORKERS 1
+#define NWORKERS 2
 
 
 typedef struct
