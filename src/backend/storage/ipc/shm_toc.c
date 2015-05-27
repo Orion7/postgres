@@ -224,11 +224,15 @@ shm_toc_lookup(shm_toc *toc, uint64 key)
 	nentry = toc->toc_nentry;
 	pg_read_barrier();
 
+	elog(LOG, "shm_toc_lookup 0, toc->toc_entry[i].key = %d, nentry = %d", toc->toc_entry[i].key, nentry);
+
 	/* Now search for a matching entry. */
-	for (i = 0; i < nentry; ++i)
+	for (i = 0; i < nentry; ++i){
+		elog(LOG, "key =  %d", key);
 		if (toc->toc_entry[i].key == key)
 			return ((char *) toc) + toc->toc_entry[i].offset;
-
+	}
+	elog(LOG, "shm_toc_lookup 1");
 	/* No matching entry was found. */
 	return NULL;
 }

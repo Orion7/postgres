@@ -40,7 +40,7 @@ int hashcount[4];
 /* Identifier for shared memory segments used by this extension. */
 #define		PG_TEST_SHM_MQ_MAGIC		0x79fb2447
 #define		QUEUE_SIZE     1000000
-#define 	NWORKERS	4
+#define 	NWORKERS	1
 
 typedef struct
 {
@@ -358,6 +358,8 @@ ginBuildCallback(Relation index, HeapTuple htup, Datum *values,
 static void
 dowork(Datum main_arg)
 {	
+	elog(LOG, "dowork enter %d", DatumGetInt32(main_arg));
+
 	dsm_segment *seg;
 	shm_toc    *toc;
 	shm_mq_handle *inqh;
@@ -380,6 +382,8 @@ dowork(Datum main_arg)
 	ImmediateInterruptOK = false;
 	BackgroundWorkerUnblockSignals();
 
+	elog(LOG, "dowork 1");
+
 	/*
 	 * Connect to the dynamic shared memory segment.
 	 *
@@ -401,6 +405,7 @@ dowork(Datum main_arg)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 			   errmsg("bad magic number in dynamic shared memory segment")));
+	elog(LOG, "dowork 2");
 
 	/*
 	 * Acquire a worker number.
@@ -418,12 +423,12 @@ dowork(Datum main_arg)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("too many message queue testing workers already")));
-
+	elog(LOG, "dowork 3");
 	/*
 	 * Attach to the appropriate message queues.
 	 */
 	attach_to_queues(seg, toc, myworkernumber, &inqh, &outqh);
-
+	elog(LOG, "dowork 4");
 	/*
 	 * Indicate that we're fully initialized and ready to begin the main part
 	 * of the parallel operation.
@@ -444,9 +449,10 @@ dowork(Datum main_arg)
 	}
 	SetLatch(&registrant->procLatch);
 
+	elog(LOG, "dowork 5");
 	/* Do the work. */
 	copy_messages(inqh, outqh);
-
+	elog(LOG, "dowork 6");
 	/*
 	 * We're done.  Explicitly detach the shared memory segment so that we
 	 * don't get a resource leak warning at commit time.  This will fire any
@@ -474,12 +480,20 @@ attach_to_queues(dsm_segment *seg, shm_toc *toc, int myworkernumber,
 {
 	shm_mq	   *inq;
 	shm_mq	   *outq;
-
+	elog(LOG, "attach_to_queues enter");
 	inq = shm_toc_lookup(toc, myworkernumber);
+	elog(LOG, "attach_to_queues 1");
 	shm_mq_set_receiver(inq, MyProc);
+	elog(LOG, "attach_to_queues 2");
 	*inqhp = shm_mq_attach(inq, seg, NULL);
+
+	elog(LOG, "attach_to_queues 3");
 	outq = shm_toc_lookup(toc, myworkernumber + 1);
+
+	elog(LOG, "attach_to_queues 4");
 	shm_mq_set_sender(outq, MyProc);
+
+	elog(LOG, "attach_to_queues 5");
 	*outqhp = shm_mq_attach(outq, seg, NULL);
 }
 
@@ -586,6 +600,29 @@ setup_dynamic_shared_memory(int64 queue_size, int nworkers,
 	hdr->workers_attached = 0;
 	hdr->workers_ready = 0;
 	shm_toc_insert(toc, 0, hdr);
+
+	/* Set up one message queue per worker, plus one. */
+		for (i = 0; i <= nworkers; ++i)
+		{
+			shm_mq	   *mq;
+
+			mq = shm_mq_create(shm_toc_allocate(toc, (Size) queue_size),
+							   (Size) queue_size);
+			shm_toc_insert(toc, i + 1, mq);
+
+			if (i == 0)
+			{
+				/* We send messages to the first queue. */
+				shm_mq_set_sender(mq, MyProc);
+				*outp = mq;
+			}
+			if (i == nworkers)
+			{
+				/* We receive messages from the last queue. */
+				shm_mq_set_receiver(mq, MyProc);
+				*inp = mq;
+			}
+		}
 
 	/* Return results to caller. */
 	*segp = seg;

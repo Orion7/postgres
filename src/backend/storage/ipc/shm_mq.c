@@ -193,14 +193,20 @@ void
 shm_mq_set_receiver(shm_mq *mq, PGPROC *proc)
 {
 	volatile shm_mq *vmq = mq;
+
+	elog(LOG, "shm_mq_set_receiver 1");
 	PGPROC	   *sender;
-
+    elog(LOG, "shm_mq_set_receiver 2");
 	SpinLockAcquire(&mq->mq_mutex);
+	elog(LOG, "shm_mq_set_receiver 3");
 	Assert(vmq->mq_receiver == NULL);
+	elog(LOG, "shm_mq_set_receiver 4");
 	vmq->mq_receiver = proc;
+	elog(LOG, "shm_mq_set_receiver 5");
 	sender = vmq->mq_sender;
+	elog(LOG, "shm_mq_set_receiver 6");
 	SpinLockRelease(&mq->mq_mutex);
-
+	elog(LOG, "shm_mq_set_receiver 7");
 	if (sender != NULL)
 		SetLatch(&sender->procLatch);
 }
