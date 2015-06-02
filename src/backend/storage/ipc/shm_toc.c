@@ -98,10 +98,12 @@ shm_toc_allocate(shm_toc *toc, Size nbytes)
 	nentry = vtoc->toc_nentry;
 	toc_bytes = offsetof(shm_toc, toc_entry) +nentry * sizeof(shm_toc_entry)
 		+ allocated_bytes;
-	elog(LOG, "here");
+	elog(LOG, "allocate");
+	elog(LOG, "%zu + %zu > %zu || %zu + %zu < %zu", toc_bytes, nbytes, total_bytes, toc_bytes, nbytes, toc_bytes);
 	/* Check for memory exhaustion and overflow. */
 	if (toc_bytes + nbytes > total_bytes || toc_bytes + nbytes < toc_bytes)
 	{
+		elog(LOG, "allocate out");
 		SpinLockRelease(&toc->toc_mutex);
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
@@ -179,10 +181,12 @@ shm_toc_insert(shm_toc *toc, uint64 key, void *address)
 	toc_bytes = offsetof(shm_toc, toc_entry) +nentry * sizeof(shm_toc_entry)
 		+ allocated_bytes;
 
+	elog(LOG, "shm_toc_insert 1");
 	/* Check for memory exhaustion and overflow. */
 	if (toc_bytes + sizeof(shm_toc_entry) > total_bytes ||
 		toc_bytes + sizeof(shm_toc_entry) < toc_bytes)
 	{
+		elog(LOG, "insert out");
 		SpinLockRelease(&toc->toc_mutex);
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),

@@ -39,7 +39,7 @@ int hashcount[4];
 
 /* Identifier for shared memory segments used by this extension. */
 #define		PG_TEST_SHM_MQ_MAGIC		0x79fb2447
-#define		QUEUE_SIZE     1000000
+#define		QUEUE_SIZE     64
 #define 	NWORKERS	1
 
 typedef struct
@@ -516,6 +516,8 @@ copy_messages(shm_mq_handle *inqh, shm_mq_handle *outqh)
 		/* Notice any interrupts that have occurred. */
 		CHECK_FOR_INTERRUPTS();
 
+		elog(LOG, "ON SMOG!!!!");
+
 		/* Receive a message. */
 		res = shm_mq_receive(inqh, &len, &data, false);
 		if (res != SHM_MQ_SUCCESS)
@@ -605,9 +607,10 @@ setup_dynamic_shared_memory(int64 queue_size, int nworkers,
 		for (i = 0; i <= nworkers; ++i)
 		{
 			shm_mq	   *mq;
-
+			elog(LOG, "sdsm 1, i = %d, nworkers = %d", i, nworkers);
 			mq = shm_mq_create(shm_toc_allocate(toc, (Size) queue_size),
 							   (Size) queue_size);
+			elog(LOG, "sdsm 2, i = %d", i);
 			shm_toc_insert(toc, i + 1, mq);
 
 			if (i == 0)

@@ -1,5 +1,5 @@
 test tablespace               ... ok
-parallel group (20 tests):  regproc oid txid pg_lsn name varchar float4 boolean char text float8 int8 int4 int2 money uuid bit enum rangetypes numeric
+parallel group (20 tests):  text char boolean float4 oid txid float8 name int4 int2 pg_lsn regproc int8 money uuid varchar bit enum rangetypes numeric
      boolean                  ... ok
      char                     ... ok
      name                     ... ok
@@ -22,7 +22,7 @@ parallel group (20 tests):  regproc oid txid pg_lsn name varchar float4 boolean 
      regproc                  ... ok
 test strings                  ... ok
 test numerology               ... ok
-parallel group (20 tests):  comments lseg box timetz reltime abstime circle path macaddr point tstypes tinterval time inet polygon line date interval timestamp timestamptz
+parallel group (20 tests):  reltime comments tinterval path point line abstime lseg box timetz circle macaddr polygon time tstypes interval inet date timestamp timestamptz
      point                    ... ok
      lseg                     ... ok
      line                     ... ok
@@ -64,7 +64,7 @@ parallel group (2 tests):  create_operator create_misc
 parallel group (2 tests):  create_view create_index
      create_index             ... FAILED
      create_view              ... ok
-parallel group (11 tests):  constraints create_aggregate create_cast create_function_3 drop_if_exists vacuum typed_table create_table_like triggers updatable_views inherit
+parallel group (11 tests):  create_cast create_aggregate create_function_3 drop_if_exists typed_table vacuum constraints create_table_like triggers inherit updatable_views
      create_aggregate         ... ok
      create_function_3        ... ok
      create_cast              ... ok
@@ -79,7 +79,7 @@ parallel group (11 tests):  constraints create_aggregate create_cast create_func
 test sanity_check             ... FAILED
 test errors                   ... ok
 test select                   ... ok
-parallel group (20 tests):  select_distinct_on delete select_distinct select_implicit hash_index namespace update select_having random select_into case btree_index transactions union portals subselect aggregates arrays join prepared_xacts
+parallel group (20 tests):  select_having select_into delete select_distinct select_distinct_on hash_index update case namespace random select_implicit transactions btree_index portals union subselect aggregates arrays join prepared_xacts
      select_into              ... ok
      select_distinct          ... ok
      select_distinct_on       ... ok
@@ -100,7 +100,7 @@ parallel group (20 tests):  select_distinct_on delete select_distinct select_imp
      namespace                ... ok
      prepared_xacts           ... ok
      delete                   ... ok
-parallel group (11 tests):  lock security_label replica_identity gin collate gist rowsecurity brin spgist privileges matview
+parallel group (11 tests):  lock security_label collate replica_identity gin gist rowsecurity privileges brin spgist matview
      brin                     ... ok
      gin                      ... FAILED
      gist                     ... ok
@@ -119,7 +119,7 @@ parallel group (4 tests):  async psql alter_generic misc
      async                    ... ok
 test rules                    ... ok
 test event_trigger            ... ok
-parallel group (19 tests):  xmlmap combocid portals_p2 tsdicts advisory_lock equivclass guc functional_deps json dependency tsearch jsonb select_views window cluster foreign_data foreign_key bitmapops indirect_toast
+parallel group (19 tests):  portals_p2 advisory_lock combocid equivclass guc tsdicts xmlmap functional_deps dependency json cluster select_views tsearch jsonb window foreign_data foreign_key bitmapops indirect_toast
      select_views             ... ok
      portals_p2               ... ok
      foreign_key              ... ok
@@ -139,7 +139,7 @@ parallel group (19 tests):  xmlmap combocid portals_p2 tsdicts advisory_lock equ
      jsonb                    ... FAILED
      indirect_toast           ... ok
      equivclass               ... ok
-parallel group (19 tests):  limit conversion prepare xml returning temp copy2 plancache rowtypes without_oid sequence with polymorphism truncate domain rangefuncs largeobject alter_table plpgsql
+parallel group (19 tests):  limit xml temp prepare plancache conversion returning copy2 without_oid sequence with polymorphism rowtypes truncate domain largeobject rangefuncs alter_table plpgsql
      plancache                ... ok
      limit                    ... ok
      plpgsql                  ... ok

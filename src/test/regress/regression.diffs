@@ -1,5 +1,5 @@
 *** /home/orion/postgres/src/test/regress/expected/create_index.out	2015-05-15 02:42:10.918397426 +0300
---- /home/orion/postgres/src/test/regress/results/create_index.out	2015-05-27 20:14:09.536337020 +0300
+--- /home/orion/postgres/src/test/regress/results/create_index.out	2015-06-02 04:18:35.574764757 +0300
 ***************
 *** 1697,1713 ****
   SET enable_indexscan = OFF;
@@ -123,7 +123,7 @@
 ======================================================================
 
 *** /home/orion/postgres/src/test/regress/expected/sanity_check.out	2015-05-15 02:42:10.930397468 +0300
---- /home/orion/postgres/src/test/regress/results/sanity_check.out	2015-05-27 20:14:10.060338891 +0300
+--- /home/orion/postgres/src/test/regress/results/sanity_check.out	2015-06-02 04:18:35.938765195 +0300
 ***************
 *** 15,21 ****
   a_star|f
@@ -145,7 +145,7 @@
 ======================================================================
 
 *** /home/orion/postgres/src/test/regress/expected/gin.out	2015-05-15 02:42:10.922397440 +0300
---- /home/orion/postgres/src/test/regress/results/gin.out	2015-05-27 20:14:14.744355621 +0300
+--- /home/orion/postgres/src/test/regress/results/gin.out	2015-06-02 04:18:40.446770629 +0300
 ***************
 *** 6,11 ****
 --- 6,12 ----
@@ -170,7 +170,7 @@
 ======================================================================
 
 *** /home/orion/postgres/src/test/regress/expected/tsearch.out	2015-05-15 02:42:10.934397482 +0300
---- /home/orion/postgres/src/test/regress/results/tsearch.out	2015-05-27 20:14:15.668358921 +0300
+--- /home/orion/postgres/src/test/regress/results/tsearch.out	2015-06-02 04:18:41.406771787 +0300
 ***************
 *** 151,156 ****
 --- 151,157 ----
@@ -195,7 +195,7 @@
 ======================================================================
 
 *** /home/orion/postgres/src/test/regress/expected/jsonb.out	2015-05-15 02:42:10.922397440 +0300
---- /home/orion/postgres/src/test/regress/results/jsonb.out	2015-05-27 20:14:15.700359035 +0300
+--- /home/orion/postgres/src/test/regress/results/jsonb.out	2015-06-02 04:18:41.418771802 +0300
 ***************
 *** 1888,1893 ****
 --- 1888,1894 ----
