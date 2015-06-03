@@ -500,6 +500,8 @@ shm_mq_receive(shm_mq_handle *mqh, Size *nbytesp, void **datap, bool nowait)
 
 	Assert(mq->mq_receiver == MyProc);
 
+	elog(LOG, "shm_mq_receive 1");
+
 	/* We can't receive data until the sender has attached. */
 	if (!mqh->mqh_counterparty_attached)
 	{
@@ -517,6 +519,8 @@ shm_mq_receive(shm_mq_handle *mqh, Size *nbytesp, void **datap, bool nowait)
 		mqh->mqh_counterparty_attached = true;
 	}
 
+	elog(LOG, "shm_mq_receive 2");
+
 	/* Consume any zero-copy data from previous receive operation. */
 	if (mqh->mqh_consume_pending > 0)
 	{
@@ -524,13 +528,23 @@ shm_mq_receive(shm_mq_handle *mqh, Size *nbytesp, void **datap, bool nowait)
 		mqh->mqh_consume_pending = 0;
 	}
 
+	elog(LOG, "shm_mq_receive 3");
+
 	/* Try to read, or finish reading, the length word from the buffer. */
 	while (!mqh->mqh_length_word_complete)
 	{
+		elog(LOG, "shm_mq_receive 3.0");
+
 		/* Try to receive the message length word. */
 		Assert(mqh->mqh_partial_bytes < sizeof(Size));
+
+		elog(LOG, "shm_mq_receive 3.01");
+
 		res = shm_mq_receive_bytes(mq, sizeof(Size) - mqh->mqh_partial_bytes,
 								   nowait, &rb, &rawdata);
+
+		elog(LOG, "shm_mq_receive 3.1");
+
 		if (res != SHM_MQ_SUCCESS)
 			return res;
 
@@ -544,6 +558,8 @@ shm_mq_receive(shm_mq_handle *mqh, Size *nbytesp, void **datap, bool nowait)
 			Size		needed;
 
 			nbytes = *(Size *) rawdata;
+
+			elog(LOG, "shm_mq_receive 3.2");
 
 			/* If we've already got the whole message, we're done. */
 			needed = MAXALIGN(sizeof(Size)) + MAXALIGN(nbytes);
@@ -560,6 +576,8 @@ shm_mq_receive(shm_mq_handle *mqh, Size *nbytesp, void **datap, bool nowait)
 				*datap = ((char *) rawdata) + MAXALIGN(sizeof(Size));
 				return SHM_MQ_SUCCESS;
 			}
+
+			elog(LOG, "shm_mq_receive 3.3");
 
 			/*
 			 * We don't have the whole message, but we at least have the whole
@@ -609,6 +627,8 @@ shm_mq_receive(shm_mq_handle *mqh, Size *nbytesp, void **datap, bool nowait)
 	}
 	nbytes = mqh->mqh_expected_bytes;
 
+	elog(LOG, "shm_mq_receive 4");
+
 	if (mqh->mqh_partial_bytes == 0)
 	{
 		/*
@@ -650,6 +670,8 @@ shm_mq_receive(shm_mq_handle *mqh, Size *nbytesp, void **datap, bool nowait)
 			mqh->mqh_buflen = newbuflen;
 		}
 	}
+
+	elog(LOG, "shm_mq_receive 5");
 
 	/* Loop until we've copied the entire message. */
 	for (;;)
@@ -888,7 +910,7 @@ shm_mq_receive_bytes(shm_mq *mq, Size bytes_needed, bool nowait,
 	Size		ringsize = mq->mq_ring_size;
 	uint64		used;
 	uint64		written;
-
+	elog(LOG, "shm_mq_receive_bytes");
 	for (;;)
 	{
 		Size		offset;
@@ -899,7 +921,7 @@ shm_mq_receive_bytes(shm_mq *mq, Size bytes_needed, bool nowait,
 		used = written - mq->mq_bytes_read;
 		Assert(used <= ringsize);
 		offset = mq->mq_bytes_read % (uint64) ringsize;
-
+		elog(LOG, "shm_mq_receive_bytes 1");
 		/* If we have enough data or buffer has wrapped, we're done. */
 		if (used >= bytes_needed || offset + used >= ringsize)
 		{
@@ -907,7 +929,7 @@ shm_mq_receive_bytes(shm_mq *mq, Size bytes_needed, bool nowait,
 			*datap = &mq->mq_ring[mq->mq_ring_offset + offset];
 			return SHM_MQ_SUCCESS;
 		}
-
+		elog(LOG, "shm_mq_receive_bytes 2");
 		/*
 		 * Fall out before waiting if the queue has been detached.
 		 *
@@ -918,11 +940,13 @@ shm_mq_receive_bytes(shm_mq *mq, Size bytes_needed, bool nowait,
 		 */
 		if (detached)
 			return SHM_MQ_DETACHED;
-
+		elog(LOG, "shm_mq_receive_bytes 3");
 		/* Skip manipulation of our latch if nowait = true. */
-		if (nowait)
+		if (nowait){
+			elog(LOG, "nowait = true");
 			return SHM_MQ_WOULD_BLOCK;
-
+		}
+		elog(LOG, "shm_mq_receive_bytes 4");
 		/*
 		 * Wait for our latch to be set.  It might already be set for some
 		 * unrelated reason, but that'll just result in one extra trip through
@@ -934,7 +958,7 @@ shm_mq_receive_bytes(shm_mq *mq, Size bytes_needed, bool nowait,
 
 		/* An interrupt may have occurred while we were waiting. */
 		CHECK_FOR_INTERRUPTS();
-
+		elog(LOG, "shm_mq_receive_bytes 5");
 		/* Reset the latch so we don't spin. */
 		ResetLatch(&MyProc->procLatch);
 	}

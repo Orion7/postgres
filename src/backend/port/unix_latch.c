@@ -59,13 +59,12 @@
 static volatile sig_atomic_t waiting = false;
 
 /* Read and write ends of the self-pipe */
-static int	selfpipe_readfd = -1;
-static int	selfpipe_writefd = -1;
+static int selfpipe_readfd = -1;
+static int selfpipe_writefd = -1;
 
 /* Private function prototypes */
 static void sendSelfPipeByte(void);
 static void drainSelfPipe(void);
-
 
 /*
  * Initialize the process-local latch infrastructure.
@@ -73,10 +72,8 @@ static void drainSelfPipe(void);
  * This must be called once during startup of any process that can wait on
  * latches, before it issues any InitLatch() or OwnLatch() calls.
  */
-void
-InitializeLatchSupport(void)
-{
-	int			pipefd[2];
+void InitializeLatchSupport(void) {
+	int pipefd[2];
 
 	Assert(selfpipe_readfd == -1);
 
@@ -101,9 +98,7 @@ InitializeLatchSupport(void)
 /*
  * Initialize a backend-local latch.
  */
-void
-InitLatch(volatile Latch *latch)
-{
+void InitLatch(volatile Latch *latch) {
 	/* Assert InitializeLatchSupport has been called in this process */
 	Assert(selfpipe_readfd >= 0);
 
@@ -123,9 +118,7 @@ InitLatch(volatile Latch *latch)
  * doesn't actually require that, but the Windows one does.) Because of
  * this restriction, we have no concurrency issues to worry about here.
  */
-void
-InitSharedLatch(volatile Latch *latch)
-{
+void InitSharedLatch(volatile Latch *latch) {
 	latch->is_set = false;
 	latch->owner_pid = 0;
 	latch->is_shared = true;
@@ -144,9 +137,7 @@ InitSharedLatch(volatile Latch *latch)
  * latch_sigusr1_handler() is called from the SIGUSR1 signal handler,
  * as shared latches use SIGUSR1 for inter-process communication.
  */
-void
-OwnLatch(volatile Latch *latch)
-{
+void OwnLatch(volatile Latch *latch) {
 	/* Assert InitializeLatchSupport has been called in this process */
 	Assert(selfpipe_readfd >= 0);
 
@@ -162,11 +153,8 @@ OwnLatch(volatile Latch *latch)
 /*
  * Disown a shared latch currently owned by the current process.
  */
-void
-DisownLatch(volatile Latch *latch)
-{
-	Assert(latch->is_shared);
-	Assert(latch->owner_pid == MyProcPid);
+void DisownLatch(volatile Latch *latch) {
+	Assert(latch->is_shared); Assert(latch->owner_pid == MyProcPid);
 
 	latch->owner_pid = 0;
 }
@@ -190,9 +178,8 @@ DisownLatch(volatile Latch *latch)
  * that if multiple wake-up conditions are true, there is no guarantee that
  * we return all of them in one call, but we will return at least one.
  */
-int
-WaitLatch(volatile Latch *latch, int wakeEvents, long timeout)
-{
+int WaitLatch(volatile Latch *latch, int wakeEvents, long timeout) {
+	elog(LOG, "WaitLatch");
 	return WaitLatchOrSocket(latch, wakeEvents, PGINVALID_SOCKET, timeout);
 }
 
@@ -204,48 +191,43 @@ WaitLatch(volatile Latch *latch, int wakeEvents, long timeout)
  * 'wakeEvents'; WL_SOCKET_WRITEABLE is optional.  The reason for this is
  * that EOF and error conditions are reported only via WL_SOCKET_READABLE.
  */
-int
-WaitLatchOrSocket(volatile Latch *latch, int wakeEvents, pgsocket sock,
-				  long timeout)
-{
-	int			result = 0;
-	int			rc;
-	instr_time	start_time,
-				cur_time;
-	long		cur_timeout;
-
+int WaitLatchOrSocket(volatile Latch *latch, int wakeEvents, pgsocket sock,
+		long timeout) {
+	int result = 0;
+	int rc;
+	instr_time start_time, cur_time;
+	long cur_timeout;
+	elog(LOG, "WaitLatchOrSocket");
 #ifdef HAVE_POLL
 	struct pollfd pfds[3];
-	int			nfds;
+	int nfds;
 #else
 	struct timeval tv,
-			   *tvp;
-	fd_set		input_mask;
-	fd_set		output_mask;
-	int			hifd;
+	*tvp;
+	fd_set input_mask;
+	fd_set output_mask;
+	int hifd;
 #endif
 
 	/* Ignore WL_SOCKET_* events if no valid socket is given */
 	if (sock == PGINVALID_SOCKET)
 		wakeEvents &= ~(WL_SOCKET_READABLE | WL_SOCKET_WRITEABLE);
 
-	Assert(wakeEvents != 0);	/* must have at least one wake event */
+	Assert(wakeEvents != 0); /* must have at least one wake event */
 	/* Cannot specify WL_SOCKET_WRITEABLE without WL_SOCKET_READABLE */
 	Assert((wakeEvents & (WL_SOCKET_READABLE | WL_SOCKET_WRITEABLE)) != WL_SOCKET_WRITEABLE);
 
 	if ((wakeEvents & WL_LATCH_SET) && latch->owner_pid != MyProcPid)
 		elog(ERROR, "cannot wait on a latch owned by another process");
-
+	elog(LOG, "WaitLatchOrSocket 1");
 	/*
 	 * Initialize timeout if requested.  We must record the current time so
 	 * that we can determine the remaining timeout if the poll() or select()
 	 * is interrupted.  (On some platforms, select() will update the contents
 	 * of "tv" for us, but unfortunately we can't rely on that.)
 	 */
-	if (wakeEvents & WL_TIMEOUT)
-	{
-		INSTR_TIME_SET_CURRENT(start_time);
-		Assert(timeout >= 0 && timeout <= INT_MAX);
+	if (wakeEvents & WL_TIMEOUT) {
+		INSTR_TIME_SET_CURRENT(start_time); Assert(timeout >= 0 && timeout <= INT_MAX);
 		cur_timeout = timeout;
 
 #ifndef HAVE_POLL
@@ -253,19 +235,16 @@ WaitLatchOrSocket(volatile Latch *latch, int wakeEvents, pgsocket sock,
 		tv.tv_usec = (cur_timeout % 1000L) * 1000L;
 		tvp = &tv;
 #endif
-	}
-	else
-	{
+	} else {
 		cur_timeout = -1;
 
 #ifndef HAVE_POLL
 		tvp = NULL;
 #endif
 	}
-
+	elog(LOG, "WaitLatchOrSocket 2");
 	waiting = true;
-	do
-	{
+	do {
 		/*
 		 * Clear the pipe, then check if the latch is set already. If someone
 		 * sets the latch between this and the poll()/select() below, the
@@ -280,8 +259,7 @@ WaitLatchOrSocket(volatile Latch *latch, int wakeEvents, pgsocket sock,
 		 */
 		drainSelfPipe();
 
-		if ((wakeEvents & WL_LATCH_SET) && latch->is_set)
-		{
+		if ((wakeEvents & WL_LATCH_SET) && latch->is_set) {
 			result |= WL_LATCH_SET;
 
 			/*
@@ -291,11 +269,12 @@ WaitLatchOrSocket(volatile Latch *latch, int wakeEvents, pgsocket sock,
 			break;
 		}
 
+		elog(LOG, "WaitLatchOrSocket 3");
+
 		/* Must wait ... we use poll(2) if available, otherwise select(2) */
 #ifdef HAVE_POLL
 		nfds = 0;
-		if (wakeEvents & (WL_SOCKET_READABLE | WL_SOCKET_WRITEABLE))
-		{
+		if (wakeEvents & (WL_SOCKET_READABLE | WL_SOCKET_WRITEABLE)) {
 			/* socket, if used, is always in pfds[0] */
 			pfds[0].fd = sock;
 			pfds[0].events = 0;
@@ -312,59 +291,51 @@ WaitLatchOrSocket(volatile Latch *latch, int wakeEvents, pgsocket sock,
 		pfds[nfds].revents = 0;
 		nfds++;
 
-		if (wakeEvents & WL_POSTMASTER_DEATH)
-		{
+		if (wakeEvents & WL_POSTMASTER_DEATH) {
 			/* postmaster fd, if used, is always in pfds[nfds - 1] */
 			pfds[nfds].fd = postmaster_alive_fds[POSTMASTER_FD_WATCH];
 			pfds[nfds].events = POLLIN;
 			pfds[nfds].revents = 0;
 			nfds++;
 		}
-
+		elog(LOG, "WaitLatchOrSocket 4");
 		/* Sleep */
 		rc = poll(pfds, nfds, (int) cur_timeout);
 
 		/* Check return code */
-		if (rc < 0)
-		{
+		if (rc < 0) {
 			/* EINTR is okay, otherwise complain */
-			if (errno != EINTR)
-			{
+			if (errno != EINTR) {
 				waiting = false;
 				ereport(ERROR,
-						(errcode_for_socket_access(),
-						 errmsg("poll() failed: %m")));
+						(errcode_for_socket_access(), errmsg("poll() failed: %m")));
 			}
-		}
-		else if (rc == 0)
-		{
+		} else if (rc == 0) {
 			/* timeout exceeded */
 			if (wakeEvents & WL_TIMEOUT)
 				result |= WL_TIMEOUT;
-		}
-		else
-		{
+		} else {
 			/* at least one event occurred, so check revents values */
-			if ((wakeEvents & WL_SOCKET_READABLE) &&
-				(pfds[0].revents & (POLLIN | POLLHUP | POLLERR | POLLNVAL)))
-			{
+			if ((wakeEvents & WL_SOCKET_READABLE)
+					&& (pfds[0].revents
+							& (POLLIN | POLLHUP | POLLERR | POLLNVAL))) {
 				/* data available in socket, or EOF/error condition */
 				result |= WL_SOCKET_READABLE;
 			}
-			if ((wakeEvents & WL_SOCKET_WRITEABLE) &&
-				(pfds[0].revents & POLLOUT))
-			{
+			if ((wakeEvents & WL_SOCKET_WRITEABLE)
+					&& (pfds[0].revents & POLLOUT)) {
 				result |= WL_SOCKET_WRITEABLE;
 			}
 
+			elog(LOG, "WaitLatchOrSocket 5");
 			/*
 			 * We expect a POLLHUP when the remote end is closed, but because
 			 * we don't expect the pipe to become readable or to have any
 			 * errors either, treat those cases as postmaster death, too.
 			 */
-			if ((wakeEvents & WL_POSTMASTER_DEATH) &&
-				(pfds[nfds - 1].revents & (POLLHUP | POLLIN | POLLERR | POLLNVAL)))
-			{
+			if ((wakeEvents & WL_POSTMASTER_DEATH)
+					&& (pfds[nfds - 1].revents
+							& (POLLHUP | POLLIN | POLLERR | POLLNVAL))) {
 				/*
 				 * According to the select(2) man page on Linux, select(2) may
 				 * spuriously return and report a file descriptor as readable,
@@ -391,21 +362,21 @@ WaitLatchOrSocket(volatile Latch *latch, int wakeEvents, pgsocket sock,
 		{
 			FD_SET(postmaster_alive_fds[POSTMASTER_FD_WATCH], &input_mask);
 			if (postmaster_alive_fds[POSTMASTER_FD_WATCH] > hifd)
-				hifd = postmaster_alive_fds[POSTMASTER_FD_WATCH];
+			hifd = postmaster_alive_fds[POSTMASTER_FD_WATCH];
 		}
 
 		if (wakeEvents & WL_SOCKET_READABLE)
 		{
 			FD_SET(sock, &input_mask);
 			if (sock > hifd)
-				hifd = sock;
+			hifd = sock;
 		}
 
 		if (wakeEvents & WL_SOCKET_WRITEABLE)
 		{
 			FD_SET(sock, &output_mask);
 			if (sock > hifd)
-				hifd = sock;
+			hifd = sock;
 		}
 
 		/* Sleep */
@@ -420,14 +391,14 @@ WaitLatchOrSocket(volatile Latch *latch, int wakeEvents, pgsocket sock,
 				waiting = false;
 				ereport(ERROR,
 						(errcode_for_socket_access(),
-						 errmsg("select() failed: %m")));
+								errmsg("select() failed: %m")));
 			}
 		}
 		else if (rc == 0)
 		{
 			/* timeout exceeded */
 			if (wakeEvents & WL_TIMEOUT)
-				result |= WL_TIMEOUT;
+			result |= WL_TIMEOUT;
 		}
 		else
 		{
@@ -442,7 +413,7 @@ WaitLatchOrSocket(volatile Latch *latch, int wakeEvents, pgsocket sock,
 				result |= WL_SOCKET_WRITEABLE;
 			}
 			if ((wakeEvents & WL_POSTMASTER_DEATH) &&
-			FD_ISSET(postmaster_alive_fds[POSTMASTER_FD_WATCH], &input_mask))
+					FD_ISSET(postmaster_alive_fds[POSTMASTER_FD_WATCH], &input_mask))
 			{
 				/*
 				 * According to the select(2) man page on Linux, select(2) may
@@ -455,14 +426,13 @@ WaitLatchOrSocket(volatile Latch *latch, int wakeEvents, pgsocket sock,
 				 * PostmasterIsAlive().
 				 */
 				if (!PostmasterIsAlive())
-					result |= WL_POSTMASTER_DEATH;
+				result |= WL_POSTMASTER_DEATH;
 			}
 		}
 #endif   /* HAVE_POLL */
 
 		/* If we're not done, update cur_timeout for next iteration */
-		if (result == 0 && cur_timeout >= 0)
-		{
+		if (result == 0 && cur_timeout >= 0) {
 			INSTR_TIME_SET_CURRENT(cur_time);
 			INSTR_TIME_SUBTRACT(cur_time, start_time);
 			cur_timeout = timeout - (long) INSTR_TIME_GET_MILLISEC(cur_time);
@@ -492,10 +462,9 @@ WaitLatchOrSocket(volatile Latch *latch, int wakeEvents, pgsocket sock,
  * NB: this function is called from critical sections and signal handlers so
  * throwing an error is not a good idea.
  */
-void
-SetLatch(volatile Latch *latch)
-{
-	pid_t		owner_pid;
+void SetLatch(volatile Latch *latch) {
+	elog(LOG, "SetLatch");
+	pid_t owner_pid;
 
 	/*
 	 * XXX there really ought to be a memory barrier operation right here, to
@@ -506,11 +475,13 @@ SetLatch(volatile Latch *latch)
 	 */
 
 	/* Quick exit if already set */
-	if (latch->is_set)
+	if (latch->is_set) {
+		elog(LOG, "latch is set = false");
 		return;
-
+	}
+	elog(LOG, "SetLatch 1");
 	latch->is_set = true;
-
+	elog(LOG, "SetLatch 2");
 	/*
 	 * See if anyone's waiting for the latch. It can be the current process if
 	 * we're in a signal handler. We use the self-pipe to wake up the select()
@@ -533,14 +504,13 @@ SetLatch(volatile Latch *latch)
 	 * that happen before they enter the loop.
 	 */
 	owner_pid = latch->owner_pid;
+	elog(LOG, "SetLatch 3");
 	if (owner_pid == 0)
 		return;
-	else if (owner_pid == MyProcPid)
-	{
+	else if (owner_pid == MyProcPid) {
 		if (waiting)
 			sendSelfPipeByte();
-	}
-	else
+	} else
 		kill(owner_pid, SIGUSR1);
 }
 
@@ -548,9 +518,7 @@ SetLatch(volatile Latch *latch)
  * Clear the latch. Calling WaitLatch after this will sleep, unless
  * the latch is set again before the WaitLatch call.
  */
-void
-ResetLatch(volatile Latch *latch)
-{
+void ResetLatch(volatile Latch *latch) {
 	/* Only the owner should reset the latch */
 	Assert(latch->owner_pid == MyProcPid);
 
@@ -577,24 +545,18 @@ ResetLatch(volatile Latch *latch)
  * NB: when calling this in a signal handler, be sure to save and restore
  * errno around it.
  */
-void
-latch_sigusr1_handler(void)
-{
+void latch_sigusr1_handler(void) {
 	if (waiting)
 		sendSelfPipeByte();
 }
 
 /* Send one byte to the self-pipe, to wake up WaitLatch */
-static void
-sendSelfPipeByte(void)
-{
-	int			rc;
-	char		dummy = 0;
+static void sendSelfPipeByte(void) {
+	int rc;
+	char dummy = 0;
 
-retry:
-	rc = write(selfpipe_writefd, &dummy, 1);
-	if (rc < 0)
-	{
+	retry: rc = write(selfpipe_writefd, &dummy, 1);
+	if (rc < 0) {
 		/* If interrupted by signal, just retry */
 		if (errno == EINTR)
 			goto retry;
@@ -622,38 +584,29 @@ retry:
  * return, it must reset that flag first (though ideally, this will never
  * happen).
  */
-static void
-drainSelfPipe(void)
-{
+static void drainSelfPipe(void) {
 	/*
 	 * There shouldn't normally be more than one byte in the pipe, or maybe a
 	 * few bytes if multiple processes run SetLatch at the same instant.
 	 */
-	char		buf[16];
-	int			rc;
+	char buf[16];
+	int rc;
 
-	for (;;)
-	{
+	for (;;) {
 		rc = read(selfpipe_readfd, buf, sizeof(buf));
-		if (rc < 0)
-		{
+		if (rc < 0) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
-				break;			/* the pipe is empty */
+				break; /* the pipe is empty */
 			else if (errno == EINTR)
-				continue;		/* retry */
-			else
-			{
+				continue; /* retry */
+			else {
 				waiting = false;
 				elog(ERROR, "read() on self-pipe failed: %m");
 			}
-		}
-		else if (rc == 0)
-		{
+		} else if (rc == 0) {
 			waiting = false;
 			elog(ERROR, "unexpected EOF on self-pipe");
-		}
-		else if (rc < sizeof(buf))
-		{
+		} else if (rc < sizeof(buf)) {
 			/* we successfully drained the pipe; no need to read() again */
 			break;
 		}
