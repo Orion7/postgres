@@ -179,7 +179,6 @@ void DisownLatch(volatile Latch *latch) {
  * we return all of them in one call, but we will return at least one.
  */
 int WaitLatch(volatile Latch *latch, int wakeEvents, long timeout) {
-	elog(LOG, "WaitLatch");
 	return WaitLatchOrSocket(latch, wakeEvents, PGINVALID_SOCKET, timeout);
 }
 
@@ -197,7 +196,6 @@ int WaitLatchOrSocket(volatile Latch *latch, int wakeEvents, pgsocket sock,
 	int rc;
 	instr_time start_time, cur_time;
 	long cur_timeout;
-	elog(LOG, "WaitLatchOrSocket");
 #ifdef HAVE_POLL
 	struct pollfd pfds[3];
 	int nfds;
@@ -219,7 +217,6 @@ int WaitLatchOrSocket(volatile Latch *latch, int wakeEvents, pgsocket sock,
 
 	if ((wakeEvents & WL_LATCH_SET) && latch->owner_pid != MyProcPid)
 		elog(ERROR, "cannot wait on a latch owned by another process");
-	elog(LOG, "WaitLatchOrSocket 1");
 	/*
 	 * Initialize timeout if requested.  We must record the current time so
 	 * that we can determine the remaining timeout if the poll() or select()
@@ -242,7 +239,6 @@ int WaitLatchOrSocket(volatile Latch *latch, int wakeEvents, pgsocket sock,
 		tvp = NULL;
 #endif
 	}
-	elog(LOG, "WaitLatchOrSocket 2");
 	waiting = true;
 	do {
 		/*
@@ -268,8 +264,6 @@ int WaitLatchOrSocket(volatile Latch *latch, int wakeEvents, pgsocket sock,
 			 */
 			break;
 		}
-
-		elog(LOG, "WaitLatchOrSocket 3");
 
 		/* Must wait ... we use poll(2) if available, otherwise select(2) */
 #ifdef HAVE_POLL
@@ -298,7 +292,7 @@ int WaitLatchOrSocket(volatile Latch *latch, int wakeEvents, pgsocket sock,
 			pfds[nfds].revents = 0;
 			nfds++;
 		}
-		elog(LOG, "WaitLatchOrSocket 4");
+
 		/* Sleep */
 		rc = poll(pfds, nfds, (int) cur_timeout);
 
@@ -327,7 +321,6 @@ int WaitLatchOrSocket(volatile Latch *latch, int wakeEvents, pgsocket sock,
 				result |= WL_SOCKET_WRITEABLE;
 			}
 
-			elog(LOG, "WaitLatchOrSocket 5");
 			/*
 			 * We expect a POLLHUP when the remote end is closed, but because
 			 * we don't expect the pipe to become readable or to have any
@@ -475,13 +468,9 @@ void SetLatch(volatile Latch *latch) {
 	 */
 
 	/* Quick exit if already set */
-	if (latch->is_set) {
-		elog(LOG, "latch is set = false");
+	if (latch->is_set)
 		return;
-	}
-	elog(LOG, "SetLatch 1");
 	latch->is_set = true;
-	elog(LOG, "SetLatch 2");
 	/*
 	 * See if anyone's waiting for the latch. It can be the current process if
 	 * we're in a signal handler. We use the self-pipe to wake up the select()
@@ -504,7 +493,6 @@ void SetLatch(volatile Latch *latch) {
 	 * that happen before they enter the loop.
 	 */
 	owner_pid = latch->owner_pid;
-	elog(LOG, "SetLatch 3");
 	if (owner_pid == 0)
 		return;
 	else if (owner_pid == MyProcPid) {

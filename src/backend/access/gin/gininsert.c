@@ -35,11 +35,11 @@
 #include "utils/resowner.h"
 #include "storage/procarray.h"
 
-int hashcount[4];
+#include <unistd.h>
 
 /* Identifier for shared memory segments used by this extension. */
 #define		PG_TEST_SHM_MQ_MAGIC		0x79fb2447
-#define		QUEUE_SIZE     64
+#define		QUEUE_SIZE     10000000
 #define 	NWORKERS	1
 
 typedef struct {
@@ -50,6 +50,11 @@ typedef struct {
 } test_shm_mq_header;
 
 typedef struct {
+	int nworkers;
+	BackgroundWorkerHandle *handle[FLEXIBLE_ARRAY_MEMBER];
+}worker_state;
+
+typedef struct {
 
 	GinState ginstate;
 	double indtuples;
@@ -57,11 +62,7 @@ typedef struct {
 	MemoryContext tmpCtx;
 	MemoryContext funcCtx;
 	BuildAccumulator accum;
-	BackgroundWorker * worker;
-	dsm_segment *seg;
 	shm_mq_handle *outqh;
-	shm_mq_handle *inqh;
-	Size len;
 } GinBuildState;
 
 static void handle_sigterm(SIGNAL_ARGS);
@@ -100,8 +101,8 @@ static IndexTuple addItemPointersToLeafTuple(GinState *ginstate, IndexTuple old,
 	/* Compress the posting list, and try to a build tuple with room for it */
 	res = NULL;
 	compressedList = ginCompressPostingList(newItems, newNPosting,
-			GinMaxItemSize,
-			NULL);
+	GinMaxItemSize,
+	NULL);
 	pfree(newItems);
 	if (compressedList) {
 		res = GinFormTuple(ginstate, attnum, key, category,
@@ -273,49 +274,32 @@ static void ginBuildCallback(Relation index, HeapTuple htup, Datum *values,
 	GinBuildState *buildstate = (GinBuildState *) state;
 	MemoryContext oldCtx;
 	int i;
-	int j;
-	Datum *entries;
-	GinNullCategory *categories;
-	int32 nentries;
 	oldCtx = MemoryContextSwitchTo(buildstate->tmpCtx);
 
-	for (i = 0; i < buildstate->ginstate.origTupdesc->natts; i++) {
-		entries = ginExtractEntries(buildstate->accum.ginstate,
-				(OffsetNumber) (i + 1), values[i], isnull[i], &nentries,
-				&categories);
+	for (i = 0; i < buildstate->ginstate.origTupdesc->natts; i++)
+		ginHeapTupleBulkInsert(buildstate, (OffsetNumber) (i + 1), values[i],
+				isnull[i], &htup->t_self);
+	/* If we've maxed out our available memory, dump everything to the index */
+	if (buildstate->accum.allocatedMemory >= maintenance_work_mem * 1024L) {
+		ItemPointerData *list;
+		Datum key;
+		GinNullCategory category;
+		uint32 nlist;
+		OffsetNumber attnum;
 
-		//DatumGetPointer VARSIZE_ANY hash_any
-		//ginstate tupdesc *attrs attbyval if(attbyval) hash(Datum)
-		//цикл получить Pointer, найти хэш от него
-		//+for
-		elog(NOTICE, "nentries = %d", nentries);
-		for (j = 0; j < nentries; j++)
-			elog(NOTICE, "entry %d = %s", j, (char * ) entries[j]);
+		ginBeginBAScan(&buildstate->accum);
+		while ((list = ginGetBAEntry(&buildstate->accum, &attnum, &key,
+				&category, &nlist)) != NULL) {
+			/* there could be many entries, so be willing to abort here */
+			CHECK_FOR_INTERRUPTS();
+			ginEntryInsert(&buildstate->ginstate, attnum, key, category, list,
+					nlist, &buildstate->buildStats);
+		}
+
+		MemoryContextReset(buildstate->tmpCtx);
+		ginInitBA(&buildstate->accum);
 	}
 
-	/* If we've maxed out our available memory, dump everything to the index */
-	/*	if (buildstate->accum.allocatedMemory >= maintenance_work_mem * 1024L)
-	 {
-	 ItemPointerData *list;
-	 Datum		key;
-	 GinNullCategory category;
-	 uint32		nlist;
-	 OffsetNumber attnum;
-
-	 ginBeginBAScan(&buildstate->accum);
-	 while ((list = ginGetBAEntry(&buildstate->accum,
-	 &attnum, &key, &category, &nlist)) != NULL)
-	 {
-	 /* there could be many entries, so be willing to abort here */
-	/*		CHECK_FOR_INTERRUPTS();
-	 ginEntryInsert(&buildstate->ginstate, attnum, key, category,
-	 list, nlist, &buildstate->buildStats);
-	 }
-
-	 MemoryContextReset(buildstate->tmpCtx);
-	 ginInitBA(&buildstate->accum);
-	 }
-	 */
 	MemoryContextSwitchTo(oldCtx);
 }
 
@@ -375,16 +359,16 @@ static void dowork(Datum main_arg) {
 	 * find it.  Our worker number gives our identity: there may be just one
 	 * worker involved in this parallel operation, or there may be many.
 	 */
-	/*hdr = shm_toc_lookup(toc, 0);
-	 SpinLockAcquire(&hdr->mutex);
-	 myworkernumber = ++hdr->workers_attached;
-	 SpinLockRelease(&hdr->mutex);
-	 elog(LOG, "%d = ", hdr->workers_total);
-	 if (myworkernumber > hdr->workers_total)
-	 ereport(ERROR,
-	 (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-	 errmsg("too many message queue testing workers already")));*/
+	hdr = shm_toc_lookup(toc, 0);
+	SpinLockAcquire(&hdr->mutex);
+	myworkernumber = ++hdr->workers_attached;
+	SpinLockRelease(&hdr->mutex);
+	elog(LOG, "hdr->workers_attached = %d", hdr->workers_attached);
+	if (myworkernumber > hdr->workers_total)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), errmsg("too many message queue testing workers already")));
 	elog(LOG, "dowork 3");
+	elog(LOG, "myworkernumber = %d", myworkernumber);
 	/*
 	 * Attach to the appropriate message queues.
 	 */
@@ -400,10 +384,10 @@ static void dowork(Datum main_arg) {
 	 * attached to all relevant dynamic shared memory data structures by now.
 	 */
 
-	/*SpinLockAcquire(&hdr->mutex);
+	SpinLockAcquire(&hdr->mutex);
 	elog(LOG, "dowork 5");
 	++hdr->workers_ready;
-	SpinLockRelease(&hdr->mutex);*/
+	SpinLockRelease(&hdr->mutex);
 
 	elog(LOG, "dowork 5");
 	elog(LOG, "bgw_notify_pid = %d", MyBgworkerEntry->bgw_notify_pid);
@@ -430,8 +414,8 @@ static void dowork(Datum main_arg) {
 	 * we can go ahead and exit.
 	 */
 	dsm_detach(seg);
-	proc_exit(1);
 	elog(LOG, "DOWORK %d!", DatumGetInt32(main_arg));
+	proc_exit(1);
 
 }
 
@@ -449,8 +433,11 @@ static void attach_to_queues(dsm_segment *seg, shm_toc *toc, int myworkernumber,
 	shm_mq *inq;
 	shm_mq *outq;
 	elog(LOG, "attach_to_queues enter");
+	elog(LOG, "myworkernumber = %d", myworkernumber);
 	inq = shm_toc_lookup(toc, myworkernumber);
 	elog(LOG, "attach_to_queues 1");
+	if (inq == NULL)
+		elog(LOG, "ing == NULL");
 	shm_mq_set_receiver(inq, MyProc);
 	elog(LOG, "attach_to_queues 2");
 	*inqhp = shm_mq_attach(inq, seg, NULL);
@@ -459,7 +446,7 @@ static void attach_to_queues(dsm_segment *seg, shm_toc *toc, int myworkernumber,
 	/*outq = shm_toc_lookup(toc, myworkernumber + 1);*/
 
 	elog(LOG, "attach_to_queues 4");
-/*	shm_mq_set_sender(outq, MyProc);*/
+	/*	shm_mq_set_sender(outq, MyProc);*/
 
 	elog(LOG, "attach_to_queues 5");
 	/**outqhp = shm_mq_attach(outq, seg, NULL);*/
@@ -485,6 +472,14 @@ static void copy_messages(shm_mq_handle *inqh, shm_mq_handle *outqh) {
 
 		/* Receive a message. */
 		res = shm_mq_receive(inqh, &len, &data, false);
+		Size i;
+		char *msg = data;
+		if (res == SHM_MQ_SUCCESS) {
+			elog(LOG, "success!");
+			for (i = 0; i < len; i++)
+				elog(LOG, "%c", msg[i]);
+		}
+
 		if (res != SHM_MQ_SUCCESS)
 			break;
 	}
@@ -539,7 +534,7 @@ static void setup_dynamic_shared_memory(int64 queue_size, int nworkers,
 	shm_toc_initialize_estimator(&e);
 	for (i = 0; i <= nworkers; ++i)
 		shm_toc_estimate_chunk(&e, (Size ) queue_size);
-	shm_toc_estimate_keys(&e, nworkers);
+	shm_toc_estimate_keys(&e, nworkers + 1);
 	segsize = shm_toc_estimate(&e);
 
 	/* Create the shared memory segment and establish a table of contents. */
@@ -548,12 +543,12 @@ static void setup_dynamic_shared_memory(int64 queue_size, int nworkers,
 			segsize);
 
 	/* Set up the header region. */
-	/*	hdr = shm_toc_allocate(toc, sizeof(test_shm_mq_header));
-	 SpinLockInit(&hdr->mutex);
-	 hdr->workers_total = nworkers;
-	 hdr->workers_attached = 0;
-	 hdr->workers_ready = 0;
-	 shm_toc_insert(toc, 0, hdr);*/
+	hdr = shm_toc_allocate(toc, sizeof(test_shm_mq_header));
+	SpinLockInit(&hdr->mutex);
+	hdr->workers_total = nworkers;
+	hdr->workers_attached = 0;
+	hdr->workers_ready = 0;
+	shm_toc_insert(toc, 0, hdr);
 
 	/* Set up one message queue per worker, plus one. */
 	for (i = 0; i < nworkers; ++i) {
@@ -562,23 +557,213 @@ static void setup_dynamic_shared_memory(int64 queue_size, int nworkers,
 		mq = shm_mq_create(shm_toc_allocate(toc, (Size) queue_size),
 				(Size) queue_size);
 		elog(LOG, "sdsm 2, i = %d", i);
-		shm_toc_insert(toc, i, mq);
+		shm_toc_insert(toc, i + 1, mq);
 
 		/* We send messages to the  queue. */
 		shm_mq_set_sender(mq, MyProc);
 		*outp = mq;
 
-		/*if (i == nworkers)
-		 {
-		 We receive messages from the last queue.
-		 shm_mq_set_receiver(mq, MyProc);
-		 *inp = mq;
-		 }*/
 	}
 
 	/* Return results to caller. */
 	*segp = seg;
 	*hdrp = hdr;
+}
+
+static void cleanup_background_workers(dsm_segment *seg, Datum arg) {
+	worker_state *wstate = (worker_state *) DatumGetPointer(arg);
+
+	while (wstate->nworkers > 0) {
+		--wstate->nworkers;
+		TerminateBackgroundWorker(wstate->handle[wstate->nworkers]);
+	}
+}
+
+static bool check_worker_status(worker_state *wstate) {
+	int n;
+
+	/* If any workers (or the postmaster) have died, we have failed. */
+	for (n = 0; n < wstate->nworkers; ++n) {
+		BgwHandleStatus status;
+		pid_t pid;
+
+		status = GetBackgroundWorkerPid(wstate->handle[n], &pid);
+		if (status == BGWH_STOPPED || status == BGWH_POSTMASTER_DIED)
+			return false;
+	}
+
+	/* Otherwise, things still look OK. */
+	return true;
+}
+
+static void wait_for_workers_to_become_ready(worker_state *wstate,
+		volatile test_shm_mq_header *hdr) {
+	bool save_set_latch_on_sigusr1;
+	bool result = false;
+
+	save_set_latch_on_sigusr1 = set_latch_on_sigusr1;
+	set_latch_on_sigusr1 = true;
+
+	elog(LOG, "wait_for_workers_to_become_ready 1");
+
+	PG_TRY()
+				;
+				{
+					for (;;) {
+						int workers_ready;
+
+						elog(LOG, "wait_for_workers_to_become_ready 2");
+
+						elog(LOG, "workers_ready = %d", hdr->workers_ready);
+
+						/* If all the workers are ready, we have succeeded. */
+						SpinLockAcquire(&hdr->mutex);
+						workers_ready = hdr->workers_ready;
+						SpinLockRelease(&hdr->mutex);
+
+						if (workers_ready >= wstate->nworkers) {
+							result = true;
+							break;
+						}
+
+						elog(LOG, "wait_for_workers_to_become_ready 3");
+
+						/* If any workers (or the postmaster) have died, we have failed. */
+						if (!check_worker_status(wstate)) {
+							result = false;
+							break;
+						}
+
+						elog(LOG, "wait_for_workers_to_become_ready 4");
+
+						/* Wait to be signalled. */
+						WaitLatch(&MyProc->procLatch, WL_LATCH_SET, 0);
+
+						elog(LOG, "wait_for_workers_to_become_ready 5");
+
+						/* An interrupt may have occurred while we were waiting. */
+						CHECK_FOR_INTERRUPTS();
+
+						/* Reset the latch so we don't spin. */
+						ResetLatch(&MyProc->procLatch);
+					}
+				}PG_CATCH();
+			{
+				set_latch_on_sigusr1 = save_set_latch_on_sigusr1;
+				PG_RE_THROW();
+			}PG_END_TRY();
+
+	if (!result)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_RESOURCES), errmsg("one or more background workers failed to start")));
+}
+
+/*
+ * Register background workers.
+ */
+static worker_state *
+setup_background_workers(int nworkers, dsm_segment *seg) {
+	MemoryContext oldcontext;
+	BackgroundWorker worker;
+	worker_state *wstate;
+	int i;
+
+	/*
+	 * We need the worker_state object and the background worker handles to
+	 * which it points to be allocated in CurTransactionContext rather than
+	 * ExprContext; otherwise, they'll be destroyed before the on_dsm_detach
+	 * hooks run.
+	 */
+	oldcontext = MemoryContextSwitchTo(CurTransactionContext);
+
+	/* Create worker state object. */
+	wstate = MemoryContextAlloc(TopTransactionContext,
+			offsetof(worker_state, handle)
+					+ sizeof(BackgroundWorkerHandle *) * nworkers);
+	wstate->nworkers = 0;
+
+	/*
+	 * Arrange to kill all the workers if we abort before all workers are
+	 * finished hooking themselves up to the dynamic shared memory segment.
+	 *
+	 * If we die after all the workers have finished hooking themselves up to
+	 * the dynamic shared memory segment, we'll mark the two queues to which
+	 * we're directly connected as detached, and the worker(s) connected to
+	 * those queues will exit, marking any other queues to which they are
+	 * connected as detached.  This will cause any as-yet-unaware workers
+	 * connected to those queues to exit in their turn, and so on, until
+	 * everybody exits.
+	 *
+	 * But suppose the workers which are supposed to connect to the queues to
+	 * which we're directly attached exit due to some error before they
+	 * actually attach the queues.  The remaining workers will have no way of
+	 * knowing this.  From their perspective, they're still waiting for those
+	 * workers to start, when in fact they've already died.
+	 */
+	on_dsm_detach(seg, cleanup_background_workers, PointerGetDatum(wstate));
+
+	/* Configure a worker. */
+	worker.bgw_flags = BGWORKER_SHMEM_ACCESS;
+	worker.bgw_start_time = BgWorkerStart_ConsistentState;
+	worker.bgw_restart_time = BGW_NEVER_RESTART;
+	worker.bgw_main = dowork;
+	snprintf(worker.bgw_name, BGW_MAXLEN, "GinWorker");
+	worker.bgw_main_arg = UInt32GetDatum(dsm_segment_handle(seg));
+	/* set bgw_notify_pid, so we can detect if the worker stops */
+	worker.bgw_notify_pid = MyProcPid;
+
+	elog(LOG, "setup_background_workers 1");
+
+	/* Register the workers. */
+	for (i = 0; i < nworkers; ++i) {
+		if (!RegisterDynamicBackgroundWorker(&worker, &wstate->handle[i]))
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_RESOURCES), errmsg("could not register background process"), errhint("You may need to increase max_worker_processes.")));
+		++wstate->nworkers;
+	}
+
+	elog(LOG, "setup_background_workers 2");
+
+	/* All done. */
+	MemoryContextSwitchTo(oldcontext);
+	return wstate;
+}
+
+void test_shm_mq_setup(int64 queue_size, int32 nworkers, dsm_segment **segp,
+		shm_mq_handle **output, shm_mq_handle **input) {
+	dsm_segment *seg;
+	test_shm_mq_header *hdr;
+	shm_mq *outq = NULL; /* placate compiler */
+	shm_mq *inq = NULL; /* placate compiler */
+	worker_state *wstate;
+
+	/* Set up a dynamic shared memory segment. */
+	setup_dynamic_shared_memory(queue_size, nworkers, &seg, &hdr, &outq, &inq);
+	*segp = seg;
+
+	/* Register background workers. */
+	wstate = setup_background_workers(nworkers, seg);
+
+	elog(LOG, "test_shm_mq_setup 1");
+
+	/* Attach the queues. */
+	*output = shm_mq_attach(outq, seg, wstate->handle[0]);
+
+	elog(LOG, "test_shm_mq_setup 2");
+
+	/* Wait for workers to become ready. */
+	wait_for_workers_to_become_ready(wstate, hdr);
+
+	elog(LOG, "test_shm_mq_setup 3");
+
+	/*
+	 * Once we reach this point, all workers are ready.  We no longer need to
+	 * kill them if we die; they'll die on their own as the message queues
+	 * shut down.
+	 */
+	cancel_on_dsm_detach(seg, cleanup_background_workers,
+			PointerGetDatum(wstate));
+	pfree(wstate);
 }
 
 Datum ginbuild(PG_FUNCTION_ARGS) {
@@ -587,44 +772,25 @@ Datum ginbuild(PG_FUNCTION_ARGS) {
 	shm_mq_handle *inqh;
 	Size len;
 	void *data;
+	elog(LOG, "ginbuild 0");
 
-	test_shm_mq_header *hdr;
-	shm_mq *outq = NULL; /* placate compiler */
-	shm_mq *inq = NULL; /* placate
+	test_shm_mq_setup(QUEUE_SIZE, NWORKERS, &seg, &outqh, &inqh);
 
-	 /* Set up a dynamic shared memory segment. */
-	setup_dynamic_shared_memory(QUEUE_SIZE, NWORKERS, &seg, &hdr, &outq, &inq);
+	elog(LOG, "ginbuild 1");
 
-	BackgroundWorker worker[NWORKERS];
-	BackgroundWorkerHandle * handle[NWORKERS];
-	pid_t *pidp[NWORKERS];
+	char msg[5]= "Hello";
+	text *message = cstring_to_text(msg);
+	char *message_contents = VARDATA_ANY(message);
+	int message_size = VARSIZE_ANY_EXHDR(message);
+	shm_mq_result res;
 
-	int i = 0;
-
-	for (i = 0; i < NWORKERS; i++) {
-		/* Register the worker processes */
-		worker[i].bgw_flags = BGWORKER_SHMEM_ACCESS;
-		worker[i].bgw_start_time = BgWorkerStart_RecoveryFinished;
-
-		/*
-		 * Function to call when starting bgworker, in this case library is
-		 * already loaded.
-		 */
-		worker[i].bgw_main = dowork;
-		snprintf(worker[i].bgw_name, BGW_MAXLEN, "GinWorker %d", i);
-		worker[i].bgw_restart_time = BGW_NEVER_RESTART;
-		worker[i].bgw_main_arg = UInt32GetDatum(dsm_segment_handle(seg));
-		;
-#if PG_VERSION_NUM >= 90400
-		/*
-		 * Notify PID is present since 9.4. If this is not initialized
-		 * a static background worker cannot start properly.
-		 */
-		worker[i].bgw_notify_pid = MyProcPid;
-#endif
-		if (RegisterDynamicBackgroundWorker(&worker[i], &handle[i]))
-			elog(NOTICE, "works %d", i);
-	}
+	elog(LOG, "Send msg size = %zu", message_size);
+	res = shm_mq_send(outqh, message_size, message_contents, false);
+	if (res == SHM_MQ_SUCCESS) {
+		elog(LOG, "Success");
+	} else if (res == SHM_MQ_DETACHED)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), errmsg("could not send message")));
 
 	Relation heap = (Relation) PG_GETARG_POINTER(0);
 	Relation index = (Relation) PG_GETARG_POINTER(1);
@@ -640,21 +806,13 @@ Datum ginbuild(PG_FUNCTION_ARGS) {
 	MemoryContext oldCtx;
 	OffsetNumber attnum;
 
-	/* Attach the queues. */
-	outqh = shm_mq_attach(outq, seg, handle[0]);
-	/*inqh = shm_mq_attach(inq, seg, handle[NWORKERS - 1]);*/
-
-	buildstate.worker = worker;
-	buildstate.inqh = inqh;
-	/*buildstate.outqh = outqh;*/
-	buildstate.seg = seg;
-
 	if (RelationGetNumberOfBlocks(index) != 0)
 		elog(ERROR, "index \"%s\" already contains data",
 				RelationGetRelationName(index));
 
 	initGinState(&buildstate.ginstate, index);
 	buildstate.indtuples = 0;
+	buildstate.outqh = outqh;
 	memset(&buildstate.buildStats, 0, sizeof(GinStatsData));
 
 	/* initialize the meta page */
@@ -690,6 +848,8 @@ Datum ginbuild(PG_FUNCTION_ARGS) {
 	UnlockReleaseBuffer(RootBuffer);
 	END_CRIT_SECTION();
 
+	elog(LOG, "ginbuild 2");
+
 	/* count the root as first entry page */
 	buildstate.buildStats.nEntryPages++;
 
@@ -719,6 +879,8 @@ Datum ginbuild(PG_FUNCTION_ARGS) {
 	reltuples = IndexBuildHeapScan(heap, index, indexInfo, false,
 			ginBuildCallback, (void *) &buildstate);
 
+	elog(LOG, "ginbuild 3");
+
 	/* dump remaining entries to the index */
 	oldCtx = MemoryContextSwitchTo(buildstate.tmpCtx);
 	ginBeginBAScan(&buildstate.accum);
@@ -732,6 +894,8 @@ Datum ginbuild(PG_FUNCTION_ARGS) {
 	MemoryContextSwitchTo(oldCtx);
 
 	MemoryContextDelete(buildstate.tmpCtx);
+
+	elog(LOG, "ginbuild 4");
 
 	/*
 	 * Update metapage stats
@@ -747,6 +911,8 @@ Datum ginbuild(PG_FUNCTION_ARGS) {
 	result->heap_tuples = reltuples;
 	result->index_tuples = buildstate.indtuples;
 
+	elog(LOG, "ginbuild 5");
+
 	PG_RETURN_POINTER(result);
 }
 
@@ -759,10 +925,10 @@ Datum ginbuildempty(PG_FUNCTION_ARGS) {
 
 	/* An empty GIN index has two pages. */
 	MetaBuffer = ReadBufferExtended(index, INIT_FORKNUM, P_NEW, RBM_NORMAL,
-			NULL);
+	NULL);
 	LockBuffer(MetaBuffer, BUFFER_LOCK_EXCLUSIVE);
 	RootBuffer = ReadBufferExtended(index, INIT_FORKNUM, P_NEW, RBM_NORMAL,
-			NULL);
+	NULL);
 	LockBuffer(RootBuffer, BUFFER_LOCK_EXCLUSIVE);
 
 	/* Initialize and xlog metabuffer and root buffer. */
@@ -797,7 +963,7 @@ static void ginHeapTupleInsert(GinState *ginstate, OffsetNumber attnum,
 
 	for (i = 0; i < nentries; i++)
 		ginEntryInsert(ginstate, attnum, entries[i], categories[i], item, 1,
-				NULL);
+		NULL);
 }
 
 Datum gininsert(PG_FUNCTION_ARGS) {
