@@ -65,6 +65,15 @@ typedef struct {
 	shm_mq_handle *outqh;
 } GinBuildState;
 
+typedef struct {
+	OffsetNumber attnum;
+	Datum key;
+	GinNullCategory category;
+	ItemPointerData items;
+	uint32 nitem;
+	Oid relationId;
+} Message;
+
 static void handle_sigterm(SIGNAL_ARGS);
 static void attach_to_queues(dsm_segment *seg, shm_toc *toc, int myworkernumber,
 		shm_mq_handle **inqhp, shm_mq_handle **outqhp);
@@ -274,32 +283,51 @@ static void ginBuildCallback(Relation index, HeapTuple htup, Datum *values,
 	GinBuildState *buildstate = (GinBuildState *) state;
 	MemoryContext oldCtx;
 	int i;
+	shm_mq_result res;
 	oldCtx = MemoryContextSwitchTo(buildstate->tmpCtx);
-
+	ItemPointerData *list;
+	Datum key;
+	GinNullCategory category;
+	uint32 nlist;
+	OffsetNumber attnum;
 	for (i = 0; i < buildstate->ginstate.origTupdesc->natts; i++)
 		ginHeapTupleBulkInsert(buildstate, (OffsetNumber) (i + 1), values[i],
 				isnull[i], &htup->t_self);
-	/* If we've maxed out our available memory, dump everything to the index */
-	if (buildstate->accum.allocatedMemory >= maintenance_work_mem * 1024L) {
-		ItemPointerData *list;
-		Datum key;
-		GinNullCategory category;
-		uint32 nlist;
-		OffsetNumber attnum;
+	int j;
+	ginBeginBAScan(&buildstate->accum);
+	while ((list = ginGetBAEntry(&buildstate->accum, &attnum, &key, &category,
+			&nlist)) != NULL) {
+		/* there could be many entries, so be willing to abort here */
+		CHECK_FOR_INTERRUPTS();
 
-		ginBeginBAScan(&buildstate->accum);
-		while ((list = ginGetBAEntry(&buildstate->accum, &attnum, &key,
-				&category, &nlist)) != NULL) {
-			/* there could be many entries, so be willing to abort here */
-			CHECK_FOR_INTERRUPTS();
-			ginEntryInsert(&buildstate->ginstate, attnum, key, category, list,
-					nlist, &buildstate->buildStats);
-		}
+		Oid oid = RelationGetRelid(index);
+		res = shm_mq_send(buildstate->outqh, VARSIZE_ANY_EXHDR(&oid), &oid,
+		false);
 
-		MemoryContextReset(buildstate->tmpCtx);
-		ginInitBA(&buildstate->accum);
+		uint16 att = attnum;
+		uint16 *attnum_ptr = &att;
+		res = shm_mq_send(buildstate->outqh, 2, attnum_ptr,
+		false);
+
+		res = shm_mq_send(buildstate->outqh, sizeof(Datum), &key,
+		false);
+
+		res = shm_mq_send(buildstate->outqh, 1, &category,
+		false);
+
+		res = shm_mq_send(buildstate->outqh, sizeof(*list), list,
+		false);
+
+		elog(LOG, "success backend nlist = %u", nlist);
+		res = shm_mq_send(buildstate->outqh, 4, &nlist,
+		false);
+
+		res = shm_mq_send(buildstate->outqh, sizeof(buildstate->buildStats),
+				&buildstate->buildStats,
+				false);
 	}
-
+	MemoryContextReset(buildstate->tmpCtx);
+	ginInitBA(&buildstate->accum);
 	MemoryContextSwitchTo(oldCtx);
 }
 
@@ -472,16 +500,74 @@ static void copy_messages(shm_mq_handle *inqh, shm_mq_handle *outqh) {
 
 		/* Receive a message. */
 		res = shm_mq_receive(inqh, &len, &data, false);
-		Size i;
-		char *msg = data;
+		Oid * realationId = (Oid *) data;
 		if (res == SHM_MQ_SUCCESS) {
-			elog(LOG, "success!");
-			for (i = 0; i < len; i++)
-				elog(LOG, "%c", msg[i]);
+			elog(LOG, "success worker Oid = %u", *realationId);
 		}
 
 		if (res != SHM_MQ_SUCCESS)
 			break;
+
+		res = shm_mq_receive(inqh, &len, &data, false);
+		uint16 * attnum = (uint16 *) data;
+		if (res == SHM_MQ_SUCCESS) {
+			elog(LOG, "success worker attnum = %u", *attnum);
+		}
+
+		if (res != SHM_MQ_SUCCESS)
+			break;
+
+		res = shm_mq_receive(inqh, &len, &data, false);
+		Datum * key = (Datum *) data;
+		if (res == SHM_MQ_SUCCESS) {
+			elog(LOG, "success worker key");
+		}
+
+		if (res != SHM_MQ_SUCCESS)
+			break;
+
+		res = shm_mq_receive(inqh, &len, &data, false);
+		GinNullCategory * category = (GinNullCategory *) data;
+		if (res == SHM_MQ_SUCCESS) {
+			elog(LOG, "success worker category");
+		}
+
+		if (res != SHM_MQ_SUCCESS)
+			break;
+
+		res = shm_mq_receive(inqh, &len, &data, false);
+		ItemPointerData * list = (ItemPointerData *) data;
+		if (res == SHM_MQ_SUCCESS) {
+			elog(LOG, "success worker list");
+		}
+
+		if (res != SHM_MQ_SUCCESS)
+			break;
+
+		res = shm_mq_receive(inqh, &len, &data, false);
+		uint32 * nlist = (uint32 *) data;
+		if (res == SHM_MQ_SUCCESS) {
+			elog(LOG, "success worker nlist = %u", *nlist);
+		}
+
+		if (res != SHM_MQ_SUCCESS)
+			break;
+
+		res = shm_mq_receive(inqh, &len, &data, false);
+		GinStatsData * buildStats = (GinStatsData *) data;
+		if (res == SHM_MQ_SUCCESS) {
+			elog(LOG, "success worker buildStats");
+		}
+
+		if (res != SHM_MQ_SUCCESS)
+			break;
+
+		Relation index = RelationIdGetRelation(*realationId);
+		GinState ginstate;
+		initGinState(&ginstate, index);
+
+		/*ginEntryInsert(&ginstate, *attnum, *key, *category, list, *nlist,
+				buildStats);*/
 	}
 }
 
@@ -529,7 +615,7 @@ static void setup_dynamic_shared_memory(int64 queue_size, int nworkers,
 	 * requests, we must estimate each chunk separately.
 	 *
 	 * We need one key to register the location of the header, and we need
-	 * nworkers + 1 keys to track the locations of the message queues.
+	 * nworkers keys to track the locations of the message queues.
 	 */
 	shm_toc_initialize_estimator(&e);
 	for (i = 0; i <= nworkers; ++i)
@@ -778,20 +864,6 @@ Datum ginbuild(PG_FUNCTION_ARGS) {
 
 	elog(LOG, "ginbuild 1");
 
-	char msg[5]= "Hello";
-	text *message = cstring_to_text(msg);
-	char *message_contents = VARDATA_ANY(message);
-	int message_size = VARSIZE_ANY_EXHDR(message);
-	shm_mq_result res;
-
-	elog(LOG, "Send msg size = %zu", message_size);
-	res = shm_mq_send(outqh, message_size, message_contents, false);
-	if (res == SHM_MQ_SUCCESS) {
-		elog(LOG, "Success");
-	} else if (res == SHM_MQ_DETACHED)
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), errmsg("could not send message")));
-
 	Relation heap = (Relation) PG_GETARG_POINTER(0);
 	Relation index = (Relation) PG_GETARG_POINTER(1);
 	IndexInfo *indexInfo = (IndexInfo *) PG_GETARG_POINTER(2);
@@ -805,6 +877,7 @@ Datum ginbuild(PG_FUNCTION_ARGS) {
 	uint32 nlist;
 	MemoryContext oldCtx;
 	OffsetNumber attnum;
+	shm_mq_result res;
 
 	if (RelationGetNumberOfBlocks(index) != 0)
 		elog(ERROR, "index \"%s\" already contains data",
@@ -814,6 +887,19 @@ Datum ginbuild(PG_FUNCTION_ARGS) {
 	buildstate.indtuples = 0;
 	buildstate.outqh = outqh;
 	memset(&buildstate.buildStats, 0, sizeof(GinStatsData));
+
+	/*int a = 5;
+	 int *attnum_ptr = &a;
+
+	 Oid oid = RelationGetRelid(index);
+	 Oid *oid_ptr = &oid;
+
+	 res = shm_mq_send(outqh, VARSIZE_ANY_EXHDR(oid_ptr), oid_ptr,
+	 false);
+
+	 res = shm_mq_send(outqh, VARSIZE_ANY_EXHDR(attnum_ptr),
+	 attnum_ptr,
+	 false);*/
 
 	/* initialize the meta page */
 	MetaBuffer = GinNewBuffer(index);
